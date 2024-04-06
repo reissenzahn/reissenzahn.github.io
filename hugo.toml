@@ -1,0 +1,8 @@
+title = 'reissenzahn.com'
+baseURL = 'https://reissenzahn.com/'
+languageCode = 'en-us'
+
+[markup]
+  [markup.highlight]
+    style = 'xcode'
+    tabWidth = 2
