@@ -8,7 +8,13 @@
     </time>
   </i>
 </p>
+<p>
+  <i>{{ .Page.Params.Subtitle }}</i>
+</p>
 {{ end }}{{ end }}
+<aside>
+  {{ .TableOfContents }}
+</aside>
 <content>
   {{ .Content }}
 </content>

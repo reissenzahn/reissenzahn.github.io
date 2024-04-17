@@ -2,11 +2,10 @@
 title = "Daemons"
 date = "2024-04-06"
 tags = ["Linux"]
+subtitle = "Some notes from TLPI 37, excluding 37.5"
 +++
 
-*Some notes from TLPI 37, excluding 37.5*
-
-### Overview
+## Overview
 - A daemon is a long-lived process that runs in the background and has no controlling terminal.
 - The lack of a controlling terminal ensures that the kernel never automatically generates any job-control or terminal-related signals for the daemon.
 - Examples of daemons include: *cron*, *sshd*, *httpd*, *inetd*.
@@ -14,7 +13,7 @@ tags = ["Linux"]
 - Certain daemons are run as kernel threads such as *pdflush*, which periodically flushes dirty pages to disk.
 - Since daemons are long-lived, it is necessary to be particularly wary of possible memory and file descriptor leaks.
 
-### Creating a Daemon
+## Creating a Daemon
 1. Perform a `fork()`, after which the parent exits and the child becomes a child of the init process. The child is guaranteed not to be a process group leader since it inherited its process group ID from its parent and has its own unique process ID.
 2. The child process calls `setsid()` to start a new session and free itself of any association with a controlling terminal.
 3. If the daemon might later open a terminal device then one of two approaches can be used to prevent the device from becoming the controlling terminal:
@@ -97,7 +96,7 @@ gcc become_daemon.c -o become_daemon
 ps -C become_daemon -o "pid ppid pgid sid tty command"
 ```
 
-### Handling SIGHUP
+## Handling SIGHUP
 - The `SIGHUP` signal provides a way to prompt a daemon to reinitialize itself by rereading its configuration file and reopening any log files it may be using.
 - Some daemons close all their files and restart themselves with an `exec()` on receipt of `SIGHUP`.
 - A `SIGHUP` signal is generated for the controlling process on disconnection of a controlling terminal. Since a daemon has no controlling terminal, the kernel never generates this signal for a daemon.
@@ -143,7 +142,7 @@ killall -HUP daemon_SIGHUP
 killall daemon_SIGHUP
 ```
 
-### Handling SIGTERM
+## Handling SIGTERM
 - A daemon typically terminates only when the system shuts down.
 - Many daemons are stopped by application-specific scripts executed during system shutdowns while others will simply receive a `SIGTERM` sent by the init process during system shutdown.
 - By default, `SIGTERM` terminates a process. If the daemon needs to perform any cleanup before terminating, it should do so by establishing a handler for this signal.

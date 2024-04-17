@@ -2,11 +2,10 @@
 title = "Syslog"
 date = "2024-04-06"
 tags = ["Linux"]
+subtitle = "Some notes from TLPI 37.5"
 +++
 
-*Some notes from TLPI 37.5*
-
-### Overview
+## Overview
 - The syslog facility provides a single, centralized logging facility that can be used to log messages by all applications on the system.
 - It has two principal components: the *syslogd* daemon and the *syslog(3)* library function.
 - *syslogd* accepts log messages from a UNIX domain socket `/dev/log` which holds locally produced messages and (if enabled) an Internet domain socket UDP port 514 which holds messages sent across a TCP/IP network.
@@ -29,7 +28,7 @@ setlogmask(LOG_UPTO(LOG_ERR));
 closelog();
 ```
 
-### openlog()
+## openlog()
 ```c
 #include <syslog.h>
 
@@ -43,7 +42,7 @@ void openlog(const char *ident, int log_options, int facility);
    - `LOG_PERROR`: Write messages to standard error as well as to the system log.
 - `facility` specifies the default facility value to be used in subsequent calls to `syslog()`: `LOG_USER` (default), `LOG_AUTH`, `LOG_KERN`, etc.
 
-### syslog()
+## syslog()
 ```c
 #include <syslog.h>
 
@@ -55,7 +54,7 @@ void syslog(int priority, const char *format, ...);
 - `format` is a format string that is used with the following arguments in the manner of `printf()`.
 - The format string does not need to include a terminating newline and may include the sequence `%m` which is replaced by the equivalent of `strerror(errno)`.
 
-### setlogmask()
+## setlogmask()
 `setlogmask()` sets a mask that filters the messages written by `syslog()`; any message whose level is not included in the current mask setting is discarded. Returns previous log priority mask.
 ```c
 #include <syslog.h>
@@ -64,7 +63,7 @@ int setlogmask(int mask_priority);
 - `mask_priority` is a bit mask obtained by ORing together the results of applying `LOG_MASK()` to level values.
 - `LOG_UPTO()` creates a bit mask filtering all messages of a certain level and above.
 
-### closelog()
+## closelog()
 ```c
 #include <syslog.h>
 
@@ -72,7 +71,7 @@ void closelog(void);
 ```
 - `closelog()` deallocates the file descriptor used for the `/dev/log` socket.
 
-### /etc/syslog.conf
+## /etc/syslog.conf
 - `/etc/syslog.conf` controls the operation of `syslogd` by specifying rules of the form *facility.level action*.
 - Together, the facility and level are referred to as the selector as they select the messages to which the rule applies.
 - The action specifies where to send the messages matching this selector.
