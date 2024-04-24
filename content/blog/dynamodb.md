@@ -6,10 +6,10 @@ subtitle = "Some notes from the The DynamoDB Book"
 +++
 
 <!--
-Locked in: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
-Done: 13
-In-progress: 14
-Omitted: 12, 15
+Done: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16
+In-progress: 19
+Omitted: 12, 15, 22
+Remaining: 18, 19, 20, 21
 -->
 
 ## Overview
@@ -457,348 +457,188 @@ result = client.query(
 
 ### Sorting
 
-#### 1. Sorting on changing attributes
-- Including an *UpdatedAt* field in the sort key is undesirable as it would require deleting and re-creating the item whenever it is updated.
-- Instead, use immutable values for the primary key and introduce a secondary index where the *UpdatedAt* is the sort key.
+#### Sorting on changing attributes
+- Using a frequently changing value as the sort key is not feasible as it would require repeatedly deleting and re-creating the item as it is not possible to update elements of the primary key.
+- Instead, immutable values should be used for the primary key and the frequently changing value can be used as the sort key of a secondary index.
 
 ![sorting-1.png](/img/dynamodb/sorting-1.png)
 
-<!--
-Like with joins and filtering, you need to arrange your items so
-they’re sorted in advance.
-If you need to have specific ordering when retrieving multiple
-items in DynamoDB, there are two main rules you need to follow.
-First, you must use a composite primary key. Second, all ordering
-234
-must be done with the sort key of a particular item collection.
-Think back to our discussion in Chapter 4 about how DynamoDB
-enforces efficiency. First, it uses the partition key to isolate item
-collections into different partitions and enables an O(1) lookup to
-find the proper node. Then, items within an item collection are
-stored as a B-tree which allow for O(log n) time complexity on
-search. This B-tree is arranged in lexicographical order according
-to the sort key, and it’s what you’ll be using for sorting.
-In this chapter, we’ll review some strategies for sorting. We’ll cover:
-• Basics of sorting (what is lexicographical sorting, how to handle
-timestamps, etc.)
-• Sorting on changing attributes
-• Ascending vs. descending
-• Two one-to-many access patterns in a single item collection
-• Zero-padding with numbers
-• Faking ascending order
-It’s a lot to cover, so let’s get started!
-14.1. Basics of sorting
-Before we dive into actual sorting strategies, I want to cover the
-basics of how DynamoDB sorts items.
-As mentioned, sorting happens only on the sort key. You can only
-use the scalar types of string, number, and binary for a sort key.
-Thus, we don’t need to think about how DynamoDB would sort a
-map attribute!
-235
-For sort keys of type number, the sorting is exactly as you would
-expect—items are sorted according to the value of the number.
-For sort keys of type string or binary, they’re sorted in order of
-UTF-8 bytes. Let’s take a deeper look at what that means.
-14.1.1. Lexicographical sorting
-A simplified version of sorting on UTF-8 bytes is to say the
-ordering is lexicographical. This order is basically dictionary order
-with two caveats:
-1. All uppercase letters come before lowercase letters
-2. Numbers and symbols (e.g. # or $) are relevant too.
-The biggest place I see people get tripped up with lexicographical
-ordering is by forgetting about the uppercase rule. For example, my
-last name is "DeBrie" (note the capital "B" in the middle). Imagine
-you had Jimmy Dean, Laura Dern, and me in an item collection
-using our last names. If you forgot about capitalization, it might
-turn out as follows:
-You might be surprised to see that DeBrie came before Dean! This
-is due to the casing—uppercase before lowercase.
-236
-To avoid odd behavior around this, you should standardize your
-sort keys in all uppercase or all lowercase values:
-With all last names in uppercase, they are now sorted as we would
-expect. You can then hold the properly-capitalized value in a
-different attribute in your item.
-14.1.2. Sorting with Timestamps
-A second basic point I want to cover with sorting is how to handle
-timestamps. I often get asked the best format to use for timestamps.
-Should we use an epoch timestamp (e.g. 1583507655) with
-DynamoDB’s number type? Or should we use IS0-8601 (e.g. 2020-
-03-06T15:14:15)? Or something else?
-First off, your choice needs to be sortable. In this case, either epoch
-timestamps or ISO-8601 will do. What you absolutely cannot do is
-use something that’s not sortable, such as a display-friendly format
-like "May 26, 1988". This won’t be sortable in DynamoDB, and you’ll
-be in a world of hurt.
-Beyond that, it doesn’t make a huge difference. I prefer to use ISO8601 timestamps because they’re human-readable if you’re
-debugging items in the DynamoDB console. That said, it can be
-237
-tough to decipher items in the DynamoDB console if you have a
-single-table design. As mentioned in Chapter 9, you should have
-some scripts to aid in pulling items that you need for debugging.
-14.1.3. Unique, sortable IDs
-A common need is to have unique, sortable IDs. This comes up
-when you need a unique identifier for an item (and ideally a
-mechanism that’s URL-friendly) but you also want to be able to sort
-a group of these items chronologically. This problem comes up in
-both the Deals example (Chapter 17) and the GitHub Migration
-example (Chapter 19).
-There are a few options in this space, but I prefer the KSUID
-implementation from the folks at Segment. A KSUID is a KSortable Unique Identifier. Basically, it’s a unique identifier that is
-prefixed with a timestamp but also contains enough randomness to
-make collisions very unlikely. In total, you get a 27-character string
-that is more unique than a UUIDv4 while still retaining
-lexicographical sorting.
-Segment released a CLI tool for creating and inspecting KSUIDs.
-The output is as follows:
-ksuid -f inspect
-REPRESENTATION:
-  String: 1YnlHOfSSk3DhX4BR6lMAceAo1V
-  Raw: 0AF14D665D6068ACBE766CF717E210D69C94D115
-COMPONENTS:
-  Time: 2020-03-07T13:02:30.000Z
-  Timestamp: 183586150
-  Payload: 5D6068ACBE766CF717E210D69C94D115
-The "String" version of it (1YnlHOfSSk3DhX4BR6lMAceAo1V) shows
-the actual value you would use in your application. The various
-238
-components below show the time and random payload that were
-used.
-There are implementations of KSUIDs for many of the popular
-programming languages, and the algorithm is pretty
-straightforward if you do need to implement it yourself.
-
-Thanks to Rick Branson and the folks at Segment for the implementation and
-description of KSUIDs. For more on this, check out Rick’s blog post on the
-implementation of KSUIDs.
-14.2. Sorting on changing attributes
-The sort key in DynamoDB is used for sorting items within a given
-item collection. This can be great for a number of purposes,
-including viewing the most recently updated items or a leaderboard
-of top scores. However, it can be tricky if the value you are sorting
-on is frequently changing. Let’s see this with an example.
-Imagine you have a ticket tracking application. Organizations sign
-up for your application and create tickets. One of the access
-patterns is to allow users to view tickets in order by the most
-recently updated.
-You decide to model your table as follows:
-239
-In this table design, the organization name is the partition key,
-which gives us the ‘group by’ functionality. Then the timestamp for
-when the ticket was last updated is the sort key, which gives us
-‘order by’ functionality. With this design, we could use
-DynamoDB’s Query API to fetch the most recent tickets for an
-organization.
-However, this design causes some problems. When updating an
-item in DynamoDB, you may not change any elements of the
-primary key. In this case, your primary key includes the UpdatedAt
-field, which changes whenever you update a ticket. Thus, anytime
-you update a ticket item, we would need first to delete the existing
-ticket item, then create a new ticket item with the updated primary
-key.
-We have caused a needlessly complicated operation and one that
-could result in data loss if you don’t handle your operations
-correctly.
-240
-Instead, let’s try a different approach. For our primary key, let’s use
-two attributes that won’t change. We’ll keep the organization name
-as the partition key but switch to using TicketId as the sort key.
-Now our table looks as follows:
-Now we can add a secondary index where the partition key is
-OrgName and the sort key is UpdatedAt. Each item from the base
-table is copied into the secondary index, and it looks as follows:
-241
-Notice that this is precisely how our original table design used to
-look. We can use the Query API against our secondary index to
-satisfy our ‘Fetch most recently updated tickets’ access pattern.
-More importantly, we don’t need to worry about complicated
-delete + create logic when updating an item. We can rely on
-DynamoDB to handle that logic when replicating the data into a
-secondary index.
-14.3. Ascending vs. descending
-Now that we’ve got the basics out of the way, let’s look at some
-more advanced strategies.
-As we discussed in Chapter 5, you can use the ScanIndexForward
-property to tell DynamoDB how to order your items. By default,
-DynamoDB will read items in ascending order. If you’re working
-with words, this means starting at aardvark and going toward zebra.
-242
-If you’re working with timestamps, this means starting at the year
-1900 and working toward the year 2020.
-You can flip this by using ScanIndexForward=False, which means
-you’ll be reading items in descending order. This is useful for a
-number of occasions, such as when you want to get the most recent
-timestamps or you want to find the highest scores on the
-leaderboard.
-One complication arises when you are combining the one-to-many
-relationship strategies from Chapter 9 with the sorting strategies in
-this chapter. With those strategies, you are often combining
-multiple types of entities in a single item collection and using it to
-read both a parent and multiple related entities in a single request.
-When you do this, you need to consider the common sort order
-you’ll use in this access pattern to know where to place the parent
-item.
-For example, imagine you have an IoT device that is sending back
-occasional sensor readings. One of your common access patterns is
-to fetch the Device item and the most recent 10 Reading items for
-the device.
-You could model your table as follows:
-243
-Notice that the parent Device item is located before any of the
-Reading items because "DEVICE" comes before "READING" in the
-alphabet. Because of this, our Query to get the Device and the
-Readings would retrieve the oldest items. If our item collection was
-big, we might need to make multiple pagination requests to get the
-most recent items.
-To avoid this, we can add a # prefix to our Reading items. When we
-do that, our table looks as follows:
-244
-Now we can use the Query API to fetch the Device item and the
-most recent Reading items by starting at the end of our item
-collection and using the ScanIndexForward=False property.
-When you are co-locating items for one-to-many or many-tomany relationships, be sure to consider the order in which you
-want the related items returned so that your parent itself is located
-accordingly.
-14.4. Two relational access patterns in a
-single item collection
-Let’s take that last example up another level. If we can handle a
-one-to-many relationship where the related items are located
-before or after the parent items, can we do both in one item
-collection?
-245
-We sure can! To do this, you’ll need to have one access pattern in
-which you fetch the related items in ascending order and another
-access pattern where you fetch the related items in descending
-order. It also works if order doesn’t really matter for one of the two
-access patterns.
-For example, imagine you had a SaaS application. Organizations
-sign up and pay for your application. Within an Organization, there
-are two sub-concepts: Users and Teams. Both Users and Teams
-have a one-to-many relationship with Organizations.
-For each of these relationships, imagine you had a relational access
-pattern of "Fetch Organization and all {Users|Teams} for the
-Organization". Further, you want to fetch Users in alphabetical
-order, but Teams can be returned in any order because there
-shouldn’t be that many of them.
-You could model your table as follows:
-In this table, we have our three types of items. All share the same PK
-value of ORG#<OrgName>. The Team items have a SK of
-246
-#TEAM#<TeamName>. The Org items have an SK of ORG#<OrgName>.
-The User items have an SK of USER#<UserName>.
-Notice that the Org item is right between the Team items and the
-User items. We had to specifically structure it this way using a #
-prefix to put the Team item ahead of the Org item in our item
-collection.
-Now we could fetch the Org and all the Team items with the
-following Query:
+#### Sorting with multiple entity types
+- When co-locating items for one-to-many relationships, it is necessary to consider the order in which related items need to be returned to determine where to place the parent item.
+- This reasoning also applies if there are two relational access patterns in a single item collection in which case one access pattern needs to fetch items in ascending order while the other fetches items in descending order.
+
+![sorting-2.png](/img/dynamodb/sorting-2.png)
+
+![sorting-3.png](/img/dynamodb/sorting-3.png)
+
+```py
 result = dynamodb.query(
   TableName='SaaSTable',
-  KeyConditionExpression="#pk = :pk AND #sk <= :sk",
+  KeyConditionExpression='#pk = :pk AND #sk <= :sk',
   ExpressionAttributeNames={
-  "#pk": "PK",
-  "#sk": "SK"
+    '#pk': 'PK',
+    '#sk': 'SK'
   },
   ExpressionAttributeValues={
-  ":pk": { "S": "ORG#MCDONALDS" },
-  ":sk": { "S": "ORG#MCDONALDS" }
+    ':pk': { 'S': 'ORG#MCDONALDS' },
+    ':sk': { 'S': 'ORG#MCDONALDS' }
   },
   ScanIndexForward=False
 )
-This goes to our partition and finds all items less than or equal to
-than the sort key value for our Org item. Then it scans backward to
-pick up all the Team items.
-Below is an image of how it works on the table:
-247
-You can do the reverse to fetch the Org item and all User items:
-look for all items greater than or equal to our Org item sort key,
-then read forward to pick up all the User items.
-This is a more advanced pattern that is by no means necessary, but
-it will save you additional secondary indexes in your table. You can
-see a pattern of this in action in Chapter 21.
-14.5. Zero-padding with numbers
-You may occasionally want to order your items numerically even
-when the sort key type is a string. A common example of this is
-when you’re using prefixes to indicate your item types. Your sort
-key might be <ItemType>#<Number>. While this is doable, you need
-to be careful about lexicographic sorting with numbers in strings.
-As usual, this is best demonstrated with an example. Imagine in our
-IoT example above that, instead of using timestamps in the sort
-key, we used a reading number. Each device kept track of what
-248
-reading number it was on and sent that up with the sensor’s value.
-You might have a table that looks as follows:
-Yikes, our readings are out of order. Reading number 10 is placed
-ahead of Reading number 2. This is because lexicographic sorting
-evalutes one character at a time, from left to right. When it is
-compared "10" to "2", the first digit of 10 ("1") is before the first digit
-of 2 ("2"), so 10 was placed before 2.
-To avoid this, you can zero-pad your numbers. To do this, you
-make the number part of your sort key a fixed length, such as 5
-digits. If your value doesn’t have that many digits, you use a "0" to
-make it longer. Thus, "10" becomes "00010" and "2" becomes
-"00002".
-Now our table looks as follows:
-249
-Now Reading number 2 is placed before Reading number 10, as
-expected.
-The big factor here is to make sure your padding is big enough to
-account for any growth. In our example, we used a fixed length of 5
-digits which means we can go to Reading number 99999. If your
-needs are bigger than that, make your fixed length longer.
-I’d recommend going to the maximum number of related items
-you could ever imagine someone having, then adding 2-3 digits
-beyond that. The cost is just an extra few characters in your item,
-but the cost of underestimating will add complexity to your data
-model later on. You may also want to have an alert condition in
-your application code that lets you know if a particular count gets
-to more than X% of your maximum, where X is probably 30 or so.
-14.6. Faking ascending order
-This last sorting pattern is a combination of a few previous ones,
-and it’s pretty wild. Imagine you had a parent entity that had two
-250
-one-to-many relationships that you want to query. Further,
-imagine that both of those one-to-many relationships use a number
-for identification but that you want to fetch both relationships in
-the same order (either descending or ascending).
-The problem here is that because you want to fetch the
-relationships in the same order, you would need to use two
-different item collections (and thus secondary indexes) to handle it.
-One item collection would handle the parent entity and the most
-recent related items of entity A, and the other item collection would
-handle the parent entity and the most recent related items of entity
-B.
-However, we could actually get this in the same item collection
-using a zero-padded difference. This is similar to our zero-padded
-number, but we’re storing the difference between the highest
-number available and the actual number of our item.
-For example, imagine we were again using a zero-padded number
-with a width of 5. If we had an item with an ID of "157", the zeropadded number would be "00157".
-To find the zero-padded difference, we subtract our number ("157")
-from the highest possible value ("99999"). Thus, the zero-padded
-difference would be "99842".
-If we put this in our table, our items would look as follows:
-251
-Notice that I changed the SK structure of the Reading items so that
-the parent Device item is now at the top of our item collection. Now
-we can fetch the Device and the most recent Readings by starting at
-Device and reading forward, even though we’re actually getting the
-readings in descending order according to their ReadingId.
-This is a pretty wacky pattern, and it actually shows up in the
-GitHub Migration example in Chapter 19. That said, you may not
-ever have a need for this in practice. The best takeaway you can get
-from this strategy is how flexible DynamoDB can be if you
-combine multiple strategies. Once you learn the basics, you can
-glue them together in unique ways to solve your problem.
--->
+```
+
+#### Zero-padding with numbers
+- It is sometimes necessary to order items numerically even when the sort key type is a string, such as when using item type prefixes.
+- Lexicographic sorting with numbers in strings evaluates one character at a time and so "10" preceeds "2".
+- This can be avoided by zero-padding the numbers like "00010" and "00002".
 
 ### Other
 
 #### Ensuring uniqueness on two or more attributes
 - To ensure that a particular attribute is unique it must be built directly into the primary key structure.
-- A condition expression can be used to ensure uniqueness when writing.
-- The combination of a partition key and sort key makes an item unique.
-- To ensure that multiple attributes are unique across the table, it will be necessary to write both attributes in a transaction with each put asserting that the attribute does not exist 
+- To ensure that two attributes are unique across the table, it will be necessary to write two items in a transaction: one that tracks the item by the first attribute and another marker item identified by the second attribute.
+- Each write operation should include a condition expression that ensures that the written primary key is unique.
+```py
+response = client.transact_write_items(
+  TransactItems=[
+    {
+      'Put': {
+        'TableName': 'UsersTable',
+        'Item': {
+          'PK': { 'S': 'USER#alexdebrie' },
+          'SK': { 'S': 'USER#alexdebrie' },
+          'Username': { 'S': 'alexdebrie' },
+          'FirstName': { 'S': 'Alex' },
+         },
+        'ConditionExpression': 'attribute_not_exists(PK)'
+      }
+    },
+    {
+      'Put': {
+        'TableName': 'UsersTable',
+        'Item': {
+          'PK': { 'S': 'USEREMAIL#alex@debrie.com' },
+          'SK': { 'S': 'USEREMAIL#alex@debrie.com' },
+        },
+        'ConditionExpression': 'attribute_not_exists(PK)'
+      }
+    }
+  ]
+)
+```
+
+#### Handling sequential identifiers
+- Sequential identifiers can be obtained by using an *UpdateItem* operation to increment a count attribute and return the incremented value.
+- This value can then be used to create a new item with that identifier.
+```py
+result = client.update_item(
+  TableName='JiraTable',
+  Key={
+    'PK': { 'S': 'PROJECT#my-project' },
+    'SK': { 'S': 'PROJECT#my-project' },
+  },
+  UpdateExpression='SET #count = #count + :inc',
+  ExpressionAttributeNames={
+    '#count': 'IssueCount',
+  },
+  ExpressionAttributeValues={
+    ':incr': { 'N': '1' },
+  },
+  ReturnValues='UPDATED_NEW'
+)
+
+current_count = result['Attributes']['IssueCount']['N']
+
+result = client.put_item(
+  TableName='JiraTable',
+  Item={
+    'PK': { 'S': 'PROJECT#my-project' },
+    'SK': { 'S': f"ISSUE#{current_count}" },
+    'IssueTitle': { 'S': 'Build DynamoDB data model' }
+  }
+)
+```
+
+#### Paginated responses
+- Pagination within an item collection can be achieved by having follow up requests specify the last seen sort key value.
+
+![other-1.png](/img/dynamodb/other-1.png)
+
+```py
+# first request
+result = client.query(
+  TableName='Ecommerce',
+  KeyConditionExpression='#pk = :pk, #sk < :sk',
+  ExpressionAttributeNames={
+    '#pk': 'PK',
+    '#sk': 'SK'
+  },
+  ExpressionAttributeValues={
+    ':pk': 'USER#alexdebrie',
+    ':sk': 'ORDER$'
+  },
+  ScanIndexForward=False,
+  Limit=5
+)
+
+# follow-up request
+result = client.query(
+  TableName='Ecommerce',
+  KeyConditionExpression='#pk = :pk, #sk < :sk',
+  ExpressionAttributeNames={
+    '#pk': 'PK',
+    '#sk': 'SK'
+  },
+  ExpressionAttributeValues={
+    ':pk': 'USER#alexdebrie',
+    ':sk': 'ORDER#1YRfXS14inXwIJEf9tO5hWnL2pi'
+  },
+  ScanIndexForward=False,
+  Limit=5
+)
+```
+
+#### Singleton items
+- A singleton item applies across the entire application.
+
+![other-2.png](/img/dynamodb/other-2.png)
+
+#### Reference counts
+- A reference count of the number of related child items for a parent item can be maintaned by creating child items in a transaction that also increments a count atttribute on the parent item.
+```py
+result = dynamodb.transact_write_items(
+  TransactItems=[
+    {
+      'Put': {
+        'TableName': 'GitHubModel',
+        'Item': {
+          'PK': { 'S': 'REPO#alexdebrie#dynamodb-book' },
+          'SK': { 'S': 'STAR#danny-developer' },
+          # ...
+        },
+        'ConditionExpression': 'attribute_not_exists(PK)',
+      },
+    },
+    {
+      'Update': {
+        'TableName': 'GitHubModel',
+        'Key': {
+          'PK': { 'S': 'REPO#alexdebrie#dynamodb-book' },
+          'SK': { 'S': '#REPO#alexdebrie#dynamodb-book' },
+        },
+        'ConditionExpression': 'attribute_exists(PK)',
+        'UpdateExpression': 'SET #count = #count + :inc',
+        'ExpressionAttributeNames': {
+          '#count': 'StarCount',
+        },
+        'ExpressionAttributeValues': {
+          ':inc': { 'N': '1' },
+        },
+      },
+    },
+  ]
+)
+```
 
 ## Examples
 
@@ -906,4 +746,476 @@ for result in results['Items']:
 • Update Order
 • View Customer & Most Recent Orders for Customer
 • View Order & Order Items
+
+
+With our first example out of the way, let’s work on something a
+little more complex. In this example, we’re going to model the
+ordering system for an e-commerce application. We’ll still have the
+training wheels on, but we’ll start to look at important DynamoDB
+concepts like primary key overloading and handling relationships
+between entities.
+Let’s get started.
+19.1. Introduction
+In this example, you’re working on part of an e-commerce store.
+For this part of our application, we’re mostly focused on two core
+areas: customer management and order management. A different
+service in our application will handle things like inventory, pricing,
+and cart management.
+I’m going to use screens from ThriftBooks.com to act as our
+example application. I love using real-life examples as it means I
+don’t have to do any UI design. Fortunately, I have some children
+who are voracious readers and a wife that is trying to keep up with
+their needs. This means we have some great example data. Lucky
+you!
+We want to handle the following screens. First, the Account
+Overview page:
+301
+Notice that this page includes information about the user, such as
+the user’s email address, as well as a paginated list of the most
+recent orders from the user. The information about a particular
+order is limited on this screen. It includes the order date, order
+number, order status, number of items, and total cost, but it doesn’t
+include information about the individual items themselves. Also
+notice that there’s something mutable about orders—the order
+status—meaning that we’ll need to change things about the order
+over time.
+To get more information about an order, you need to click on an
+order to get to the Order Detail page, shown below.
+302
+The Order Detail page shows all information about the order,
+including the summary information we already saw but also
+additional information about each of the items in the order and the
+payment and shipping information for the order.
+Finally, the Account section also allows customers to save addresses.
+The Addresses page looks as follows:
+A customer can save multiple addresses for use later on. Each
+address has a name ("Home", "Parents' House") to identify it.
+303
+Let’s add a final requirement straight from our Product Manager.
+While a customer is identified by their username, a customer is also
+required to give an email address when signing up for an account.
+We want both of these to be unique. There cannot be two customers
+with the same username, and you cannot sign up for two accounts
+with the same email address.
+With these needs in mind, let’s build our ERD and list out our
+access patterns.
+19.2. ERD and Access Patterns
+As always, the first step to data modeling is to create our entityrelationship diagram. The ERD for this use case is below:
+Our application has four entities with three relationships. First,
+304
+there are Customers, as identified in the top lefthand corner. A
+Customer may have multiple Addresses, so there is a one-to-many
+relationship between Customers and Addresses as shown on the
+lefthand side.
+Moving across the top, a Customer may place multiple Orders over
+time (indeed, our financial success depends on it!), so there is a oneto-many relationship between Customers and Orders. Finally, an
+Order can contain multiple OrderItems, as a customer may
+purchase multiple books in a single order. Thus, there is a one-tomany relationship between Orders and OrderItems.
+Now that we have our ERD, let’s create our entity chart and list our
+access patterns.
+The entity chart looks like this:
+Entity PK SK
+Customers
+Addresses
+Orders
+OrderItems
+Table 16. E-commerce entity chart
+And our acccess patterns are the following:
+• Create Customer (unique on both username and email address)
+• Create / Update / Delete Mailing Address for Customer
+• Place Order
+• Update Order
+• View Customer & Most Recent Orders for Customer
+• View Order & Order Items
+With these access patterns in mind, let’s start our data modeling.
+305
+19.3. Data modeling walkthrough
+As I start working on a data modeling, I always think about the
+same three questions:
+1. Should I use a simple or composite primary key?
+2. What interesting requirements do I have?
+3. Which entity should I start modeling first?
+In this example, we’re beyond a simple model that just has one or
+two entities. This points toward using a composite primary key.
+Further, we have a few 'fetch many' access patterns, which strongly
+points toward a composite primary key. We’ll go with that to start.
+In terms of interesting requirements, there are two that I noticed:
+1. The Customer item needs to be unique on two dimensions:
+username and email address.
+2. We have a few patterns of "Fetch parent and all related items"
+(e.g. Fetch Customer and Orders for Customer). This indicates
+we’ll need to "pre-join" our data by locating the parent item in
+the same item collection as the related items.
+In choosing which entity to start with, I always like to start with a
+'core' entity in the application and then work outward as we model
+it out. In this application, we have two entities that are pretty
+central: Customers and Orders.
+I’m going to start with Customers for two reasons:
+1. Customers have a few uniqueness requirements, which generally
+require modeling in the primary key.
+2. Customers are the parent entity for Orders. I usually prefer to
+start with parent entities in the primary key.
+306
+With that in mind, let’s model out our Customer items.
+19.3.1. Modeling the Customer entity
+Starting with the Customer item, let’s think about our needs around
+the Customer.
+First, we know that there are two one-to-many relationships with
+Customers: Addresses and Orders. Given this, it’s likely we’ll be
+making an item collection in the primary key that handles at least
+one of those relationships.
+Second, we have two uniqueness requirements for Customers:
+username and email address. The username is used for actual
+customer lookups, whereas the email address is solely a
+requirement around uniqueness.
+We’re going to focus on handling the uniquness requirements first
+because that must be built into the primary key of the main table.
+You can’t handle this via a secondary index.
+We discussed uniqueness on two attributes in Chapter 16. You can’t
+build uniqueness on multiple attributes into a single item, as that
+would only ensure the combination of the attributes is unique.
+Rather, we’ll need to make multiple items.
+Let’s create two types of items—Customers and CustomerEmails—
+with the following primary key patterns:
+Customer:
+• PK: CUSTOMER#<Username>
+• SK: CUSTOMER#<Username>
+CustomerEmail:
+307
+• PK: CUSTOMEREMAIL#<Email>
+• SK: CUSTOMEREMAIL#<Email>
+We can load our table with some items that look like the following:
+So far, our service has two customers: Alex DeBrie and Vito
+Corleone. For each customer, there are two items in DynamoDB.
+One item tracks the customer by username and includes all
+information about the customer. The other item tracks the
+customer by email address and includes just a few attributes to
+identify to whom the email belongs.
+While this table shows the CustomerEmail items, I will hide them
+when showing the table in subsequent views. They’re not critical to
+the rest of the table design, so hiding them will de-clutter the table.
+We can update our entity chart to add the CustomerEmails item
+type and to fill out the primary key patterns for our first two items:
+Entity PK SK
+Customers CUSTOMER#<Username> CUSTOMER#<Username>
+CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
+Addresses
+Orders
+OrderItems
+308
+Table 17. E-commerce entity chart
+Finally, when creating a new customer, we’ll want to only create the
+customer if there is not an existing customer with the same
+username and if this email address has not been used for another
+customer. We can handle that using a DynamoDB Transaction.
+The code below shows the code to create a customer with proper
+validation:
+response = client.transact_write_items(
+  TransactItems=[
+  {
+  'Put': {
+  'TableName': 'EcommerceTable',
+  'Item': {
+  'PK': { 'S': 'CUSTOMER#alexdebrie' },
+  'SK': { 'S': 'CUSTOMER#alexdebrie' },
+  'Username': { 'S': 'alexdebrie' },
+  'Name': { 'S': 'Alex DeBrie' },
+  ... other attributes ...
+  },
+  'ConditionExpression': 'attribute_not_exists(PK)
+  }
+  },
+  {
+  'Put': {
+  'TableName': 'EcommerceTable',
+  'Item': {
+  'PK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
+  'SK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
+  },
+  'ConditionExpression': 'attribute_not_exists(PK)
+  }
+  }
+  ]
+)
+Our TransactWriteItems API has two write requests: one to write
+the Customer item and one to write the CustomerEmail item.
+Notice that both have condition expressions to confirm that there is
+not an existing item with the same PK. If one of the conditions is
+violated, it means that either the username or email address is
+already in use and thus the entire transaction will be cancelled.
+Now that we’ve handled our Customer item, let’s move on to one of
+309
+our relationships. I’ll go with Addresses next.
+19.3.2. Modeling the Addresses entity
+There is a one-to-many relationship between Customers and
+Addresses. We can use strategies from Chapter 11 to see how we can
+handle the relationship.
+The first thing we should ask is whether we can denormalize the
+relationship. When denormalizing by using a complex attribute, we
+need to ask two things:
+1. Do we have any access patterns that fetch related entity directly
+by values of the related entity, outside the context of the parent?
+2. Is the amount of data in the complex attribute unbounded?
+In this case, the answer to the first question is 'No'. We will show
+customers their saved addresses, but it’s always in the context of the
+customer’s account, whether on the Addresses page or the Order
+Checkout page. We don’t have an access pattern like "Fetch
+Customer by Address".
+The answer to the second question is (or can be) 'No' as well. While
+we may not have considered this limitation upfront, it won’t be a
+burden on our customers to limit them to only 20 addresses. Notice
+that data modeling can be a bit of a dance. You may not have
+thought to limit the number of saved addresses during the initial
+requirements design, but it’s easy to add on to make the data
+modeling easier.
+Because both answers were 'No', we can use the denormalization
+strategy and use a complex attribute. Let’s store each customer’s
+addresses on the Customer item.
+Our updated table looks as follows:
+310
+Notice that our Customer items from before have an Addresses
+attribute outlined in red. The Addresses attribute is of the map
+type and includes one or more named addresses for the customer.
+We can update our entity chart as follows:
+Entity PK SK
+Customers CUSTOMER#<Username> CUSTOMER#<Username>
+CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
+Addresses N/A N/A
+Orders
+OrderItems
+Table 18. E-commerce entity chart
+There is no separate Address item type, so we don’t have a PK or SK
+pattern for that entity.
+19.3.3. Modeling Orders
+Now let’s move on to the Order item. This is our second one-tomany relationship with the Customer item.
+Let’s walk through the same analysis as we did with Addresses—can
+we handle this relationship through denormalization?
+Unfortunately, it doesn’t appear to be a good idea here. Because
+DynamoDB item sizes are limited to 400KB, you can only
+311
+denormalize and store as a complex attribute if there is a limit to
+the number of related items. However, we don’t want to limit the
+number of orders that a customer can make with us—we would be
+leaving money on the table! Because of that, we’ll have to find a
+different strategy.
+Notice that we have a join-like access pattern where we need to
+fetch both the Customer and the Orders in a single request. The
+next strategy, and the most common one for one-to-many
+relationships, is to use the primary key plus the Query API to 'prejoin' our data.
+The Query API can only fetch items with the same partition key, so
+we need to make sure our Order items have the same partition key
+as the Customer items. Further, we want to retrieve our Orders by
+the time they were placed, starting with the most recent.
+Let’s use the following pattern for our Order items:
+• PK: CUSTOMER#<Username>
+• SK: #ORDER#<OrderId>
+For the OrderId, we’ll used a KSUID. KSUIDs are unique identifiers
+that include a timestamp in the beginning. This allows for
+chronological ordering as well as uniqueness. You can read more
+about KSUIDs in Chapter 14.
+We can add a few Order items to our table to get the following:
+312
+We’ve added three Order items to our table, two for Alex DeBrie
+and one for Vito Corleone. Notice that the Orders have the same
+partition key and are thus in the same item collection as the
+Customer. This means we can fetch both the Customer and the
+most recent Orders in a single request.
+An additional note—see that we added a prefix of # to our Order
+items. Because we want the most recent Orders, we will be fetching
+our Orders in descending order. This means our Customer item
+needs to be after all the Order items so that we can fetch the
+Customer item plus the end of the Order items. If we didn’t have
+the # prefix for Order items, then Orders would show up after the
+Customer and would mess up our ordering.
+To handle our pattern to retrieve the Customer and the most recent
+Orders, we can write the following Query:
+resp = client.query(
+  TableName='EcommerceTable',
+  KeyConditionExpression='#pk = :pk',
+  ExpressionAttributeNames={
+  '#pk': 'PK'
+  },
+  ExpressionAttributeValues={
+  ':pk': { 'S': 'CUSTOMER#alexdebrie' }
+  },
+  ScanIndexForward=False,
+  Limit=11
+)
+313
+We use a key expression that uses the proper PK to find the item
+collection we want. Then we set ScanIndexForward=False so that it
+will start at the end of our item collection and go in descending
+order, which will return the Customer and the most recent Orders.
+Finally, we set a limit of 11 so that we get the Customer item plus
+the ten most recent orders.
+We can update our entity chart as follows:
+Entity PK SK
+Customers CUSTOMER#<Username> CUSTOMER#<Username>
+CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
+Addresses N/A N/A
+Orders CUSTOMER#<Username> #ORDER#<OrderId>
+OrderItems
+Table 19. E-commerce entity chart
+19.3.4. Modeling the Order Items
+The final entity we need to handle is the OrderItem. An OrderItem
+refers to one of the items that was in an order, such as a specific
+book or t-shirt.
+There is a one-to-many relationship between Orders and
+OrderItems, and we have an access pattern where we want join-like
+functionality as we want to fetch both the Order and all its
+OrderItems for the OrderDetails page.
+Like in the last pattern, we can’t denormalize these onto the Order
+item as the number of items in an order is unbounded. We don’t
+want to limit the number of items a customer can include in an
+order.
+Further, we can’t use the same strategy of a primary key plus Query
+API to handle this one-to-many relationship. If we did that, our
+314
+OrderItems would be placed between Orders in the base table’s
+item collections. This would significantly reduce the efficiency of
+the "Fetch Customer and Most Recent Orders" access pattern we
+handled in the last section as we would now be pulling back a ton of
+extraneous OrderItems with our request.
+That said, the principles we used in the last section are still valid.
+We’ll just handle it in a secondary index.
+First, let’s create the OrderItem entity in our base table. We’ll use
+the following pattern for OrderItems:
+• PK: ORDER#<OrderId>#ITEM#<ItemId>
+• SK: ORDER#<OrderId>#ITEM#<ItemId>
+Our table will look like this:
+We have added two OrderItems into our table. They are outlined in
+red at the bottom. Notice that the OrderItems have the same
+OrderId as an Order in our table but that the Order and OrderItems
+are in different item collections.
+To get them in the same item collection, we’ll add some additional
+properties to both Order and OrderItems.
+315
+The GSI1 structure for Orders will be as follows:
+• GSI1PK: ORDER#<OrderId>
+• GSI1SK: ORDER#<OrderId>
+The GSI1 structure for OrderItems will be as follows:
+• GSI1PK: ORDER#<OrderId>
+• GSI1SK: ITEM#<ItemId>
+Now our base table looks as follows:
+Notice that our Order and OrderItems items have been decorated
+with the GSI1PK and GSI1SK attributes.
+We can then look at our GSI1 secondary index:
+316
+Now our Orders and OrderItems have been re-arranged so they are
+in the same item collection. As such, we can fetch an Order and all
+of its OrderItems by using the Query API against our secondary
+index.
+The code to fetch an Order and all of its OrderItems is as follows:
+resp = client.query(
+  TableName='EcommerceTable',
+  IndexName='GSI1',
+  KeyConditionExpression='#gsi1pk = :gsi1pk',
+  ExpressionAttributeNames={
+  '#gsi1pk': 'GSI1PK'
+  },
+  ExpressionAttributeValues={
+  ':gsi1pk': 'ORDER#1VrgXBQ0VCshuQUnh1HrDIHQNwY'
+  }
+)
+We can also update our entity chart as follows:
+Entity PK SK
+Customers CUSTOMER#<Username> CUSTOMER#<Username>
+CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
+317
+Entity PK SK
+Addresses N/A N/A
+Orders CUSTOMER#<Username> #ORDER#<OrderId>
+OrderItems ORDER#<OrderId>#ITEM#
+<ItemId>
+ORDER#<OrderId>#ITEM#
+<ItemId>
+Table 20. E-commerce entity chart
+Further, let’s make a corresponding entity chart for GSI1 so we can
+track items in that index:
+Entity GSI1PK GSI1SK
+Customers
+CustomerEmails
+Addresses
+Orders ORDER#<OrderId> ORDER#<OrderId>
+OrderItems ORDER#<OrderId> ITEM#<ItemId>
+Table 21. E-commerce GSI1 entity chart
+19.4. Conclusion
+We’re starting to get warmed up with our DynamoDB table design.
+In this chapter, we looked at some advanced patterns including
+using primary key overloading to create item collections with
+heterogeneous items.
+Let’s review our final solution.
+Table Structure
+Our table uses a composite primary key with generic names of PK
+and SK for the partition key and sort key, respectively. We also have
+a global secondary index named GSI1 with similarly generic names
+of GSI1PK and GSI1SK for the partition and sort keys.
+318
+Our final entity chart for the main table is as follows:
+Entity PK SK
+Customers CUSTOMER#<Username> CUSTOMER#<Username>
+CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
+Addresses N/A N/A
+Orders CUSTOMER#<Username> #ORDER#<OrderId>
+OrderItems ORDER#<OrderId>#ITEM#
+<ItemId>
+ORDER#<OrderId>#ITEM#
+<ItemId>
+Table 22. E-commerce entity chart
+And the final entity chart for the GSI1 index is as follows:
+Entity GSI1PK GSI1SK
+Customers
+CustomerEmails
+Addresses
+Orders ORDER#<OrderId> ORDER#<OrderId>
+OrderItems ORDER#<OrderId> ITEM#<ItemId>
+Table 23. E-commerce GSI1 entity chart
+Notice a few divergences from our ERD to our entity chart. First,
+we needed to add a special item type, 'CustomerEmails', that are
+used solely for tracking the uniqueness of email addresses provided
+by customers. Second, we don’t have a separate item for Addresses
+as we denormalized it onto the Customer item.
+After you make these entity charts, you should include them in the
+documentation for your repository to assist others in knowing how
+the table is configured. You don’t want to make them dig through
+your data access layer to figure this stuff out.
+Access Patterns
+We have the following six access patterns that we’re solving:
+319
+Access Pattern Index Parameters Notes
+Create Customer N/A N/A
+Use TransactWriteItems to
+create Customer and
+CustomerEmail item with
+conditions to ensure
+uniqueness on each
+Create / Update
+Address N/A N/A
+Use UpdateItem to update
+the Addresses attribute on
+the Customer item
+View Customer &
+Most Recent
+Orders
+Main table • Username
+Use
+ScanIndexForward=False
+to fetch in descending
+order.
+Save Order N/A N/A
+Use TransactWriteItems to
+create Order and
+OrderItems in one request
+Update Order N/A N/A Use UpdateItem to update
+the status of an Order
+View Order &
+Order Items GSI1
+• OrderId
+Table 24. E-commerce access patterns
+Just like your entity charts, this chart with your access pattern
+should be included in the documentation for your repository so
+that it’s easier to understand what’s happening in your application.
+In the next chapter, we’re going to dial it up to 11 by modeling a
+complex application with a large number of entities and
+relationships.
 

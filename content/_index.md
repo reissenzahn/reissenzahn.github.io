@@ -38,3 +38,28 @@
 ### Unsorted
 - [Accounting for Computer Scientists](https://martin.kleppmann.com/2011/03/07/accounting-for-computer-scientists.html)
 
+<!-- 
+### accounting
+- https://www.moderntreasury.com/journal/accounting-for-developers-part-i
+- https://www.moderntreasury.com/journal/accounting-for-developers-part-ii
+- https://beancount.github.io/docs/the_double_entry_counting_method.html
+- https://martin.kleppmann.com/2011/03/07/accounting-for-computer-scientists.html
+- https://ledger-cli.org/
+- https://plaintextaccounting.org/
+- https://hledger.org/accounting.html
+
+
+### investing
+- https://www.bogleheads.org/wiki/Bogleheads%C2%AE_investment_philosophy
+- https://www.bogleheads.org/wiki/Main_Page
+
+### data science
+- https://gvwilson.github.io/sql-tutorial/
+- https://www.youtube.com/watch?v=-8s9KuNo5SA
+
+### consistent hashing
+- https://github.com/tcharding/types/blob/master/trees/bsts/intKey/unique/tree.go
+- https://en.wikipedia.org/wiki/Binary_search_tree
+- https://github.com/arriqaaq/xring/blob/master/xring.go
+- https://blog.research.google/2017/04/consistent-hashing-with-bounded-loads.html
+-->
