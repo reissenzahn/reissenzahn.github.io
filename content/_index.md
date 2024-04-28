@@ -2,11 +2,25 @@
 
 ### DynamoDB
 - [The DynamoDB Book](https://a.co/d/2jgwkwS)
+- [Using the NoSQL Workbench to build a purchase order application on DynamoDB with Rick Houlihan](https://www.youtube.com/watch?v=Xn12QSNa4RE)
 - [AWS re:Invent 2020: Data modeling with Amazon DynamoDB – Part 1](https://www.youtube.com/watch?v=fiP2e-g-r4g)
 - [AWS re:Invent 2020: Data modeling with Amazon DynamoDB – Part 2](https://www.youtube.com/watch?v=0uLF1tjI_BI)
 - [DynamoDB Enhanced Client README](https://github.com/aws/aws-sdk-java-v2/blob/master/services-custom/dynamodb-enhanced/README.md)
 - [Amazon DynamoDB Lock Client](https://github.com/awslabs/amazon-dynamodb-lock-client)
 - [DynamoDB Optimistic vs Pessimistic Locking](https://dynobase.dev/dynamodb-locking/)
+- [AWS SDK Code Examples for DynamoDB](https://github.com/aws-samples/aws-dynamodb-examples)
+- [DynamoDB Local for Desktop Development](https://aws.amazon.com/blogs/aws/dynamodb-local-for-desktop-development/)
+- [Implementing priority queueing with Amazon DynamoDB](https://aws.amazon.com/blogs/database/implementing-priority-queueing-with-amazon-dynamodb/)
+- [Best practices for designing and architecting with DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+- [Amazon’s DynamoDB — 10 years later](https://www.amazon.science/latest-news/amazons-dynamodb-10-years-later)
+
+### Pandas
+- [Pandas notebooks](https://github.com/donnemartin/data-science-ipython-notebooks?tab=readme-ov-file#pandas)
+- [AWS SDK for pandas: DynamoDB](https://aws-sdk-pandas.readthedocs.io/en/3.7.3/tutorials/028%20-%20DynamoDB.html)
+- [AWS SDK for pandas: Athena](https://aws-sdk-pandas.readthedocs.io/en/3.7.3/tutorials/006%20-%20Amazon%20Athena.html)
+
+### Packet Probing
+- [Scapy Documentation](https://scapy.readthedocs.io/en/latest/introduction.html)
 
 ### eBPF
 - [Learning eBPF](https://a.co/d/croKezE)
@@ -14,6 +28,7 @@
 - [eBPF Superpowers for Go programmers](https://www.youtube.com/watch?v=Hed2DOrk_kk)
 - [A Beginner's Guide to eBPF Programming for Networking](https://www.youtube.com/watch?v=0p987hCplbk)
 - [Debugging Go in Prod using eBPF](https://www.youtube.com/watch?v=Q7mqIB7eatQ)
+- [Awesome eBPF](https://github.com/zoidyzoidzoid/awesome-ebpf)
 
 ### Async I/O
 - [The Linux Programming Interface](https://man7.org/tlpi/)
@@ -26,6 +41,7 @@
 - [Learning Containers From The Bottom Up](https://iximiuz.com/en/posts/container-learning-path/)
 - [How Container Networking Works](https://labs.iximiuz.com/tutorials/container-networking-from-scratch)
 - [Containers From Scratch](https://www.youtube.com/watch?v=8fi7uSYlOdc)
+- [Awesome Containers](https://github.com/Friz-zy/awesome-linux-containers)
 
 ### Simulation
 - [Session 5B: Building a Discrete Event Simulation model using SimPy](https://www.youtube.com/watch?v=jXDjrWKcu6w)
@@ -37,6 +53,7 @@
 
 ### Unsorted
 - [Accounting for Computer Scientists](https://martin.kleppmann.com/2011/03/07/accounting-for-computer-scientists.html)
+- [SIGOPS Hall of Fame Award](https://www.sigops.org/awards/hof/)
 
 <!-- 
 ### accounting

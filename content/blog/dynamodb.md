@@ -1,53 +1,52 @@
 +++
 title = "DynamoDB"
 date = "2024-04-12"
-tags = ["aws"]
+tags = ["AWS"]
 subtitle = "Some notes from the The DynamoDB Book"
 +++
 
 <!--
-Done: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16
-In-progress: 19
+Done: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16, 17, 18, 19
+In-progress: 20
 Omitted: 12, 15, 22
-Remaining: 18, 19, 20, 21
+Remaining: 21
 -->
 
 ## Overview
 - DynamoDB is a fully-managed NoSQL database.
 - Two data models are supported:
-  - Key-value store: distributed hash table; allows for storing and retrieving records by primary key.
-  - Wide-column store: hash table where the value of each record is a B-tree; allows for performing contiguous range queries.
+  - *Key-value*: distributed hash table; store and retrieve records by primary key.
+  - *Wide-column*: hash table where the value of each record is a B-tree; allows for performing contiguous range queries.
 - It provides fast, consistent performance that does not degrade as the amount of stored data increases.
-- Operations are performed by making HTTP requests to the DynamoDB API and this HTTP connection model supports a virtually unlimited number of concurrent requests.
+- Operations are performed by making HTTP requests which supports a virtually unlimited number of concurrent requests.
 - A flexible pricing model is available:
-  - Provisioned capacity: read and write throughput can be changed independently and dynamically.
-  - On-demand: pay per request.
-- DynamoDB is suited for most online, transactional processing (OLTP) applications with high volumes of small bits of data being read and written.
-- The rigidity of DynamoDB operations prevents writing inefficient queries and producing data models that do not scale.
+  - *Provisioned*: read/write throughput configured independently and dynamically.
+  - *On-demand*: pay per request.
+- DynamoDB is suited for most OLTP applications with high volumes of small records being read and written.
+- The rigidity of operations prevents writing inefficient queries and producing data models that do not scale.
+- Filtering is built into the data model as the primary keys and secondary indexes determine how data is retrieved.
 
 ## Concepts
 
 ### Tables, Items & Attributes
 - A table is a collection of items, each composed of one or more attributes.
 - An attribute is given a type when it is written:
-  - *Scalar*: single simple value (string, number, binary, boolean, null).
-  - *Complex*: groupings with arbitrary nested attributes (list, map).
-  - *Set*: multiple unique values of the same type (string sets, number sets, binary sets).
+  - *Scalar*: single simple value (*string*, *number*, *binary*, *boolean*, *null*).
+  - *Complex*: groupings with arbitrary nested attributes (*list*, *map*).
+  - *Set*: multiple unique values of the same type (*string*, *number*, *binary* sets).
 - The attribute type affects which operations can be performed.
-- Attributes with the same underlying value by a different type are not considered equal.
 - A table is schemaless and attributes are not required on every item.
 - Multiple different types of entities are commonly stored in a single table to allow for handling complex access patterns in a single request without the need for joins.
-- Use prefixes to differentiate between different entity types (e.g. `CUSTOMER#123`).
+  - Use prefixes to differentiate between different entity types (e.g. `CUSTOMER#123`).
 
 ![items.png](/img/dynamodb/items.png)
 
 ### Primary Keys
 - A primary key must be declared when creating a table.
-- Each item must include the primary key and is uniquely identified by that primary key.
+- Each item must include the primary key and is uniquely identified by that key.
 - There are two types of primary keys:
-  - *Simple*: consists of a single partition key.
-  - *Composite*: consists of a partition key and sort key.
-- The terms *hash key* and *range key* are also used to refer to the partition key and sort key, respectively.
+  - *Simple*: consists of a single partition key (hash).
+  - *Composite*: consists of a partition key and sort key (range).
 - A simple primary key allows for only fetching a single item at a time while a composite primary key enables fetching all items with the same partition key.
 - Writing an item using a primary key that already exits will overwrite the existing item (unless this is explictly disabled, in which case the write will be rejected).
 
@@ -58,37 +57,33 @@ Remaining: 18, 19, 20, 21
 - There are two types of secondary indexes:
   - *Local*: uses the same partition key as the primary key but a different sort key.
   - *Global*: uses any attributes for the partition key and sort key.
-- Filtering is built into the data model as the primary keys and secondary indexes determine how data is retrieved.
 - Separate application attributes (*FirstName*, *LastUdated*, etc.) from indexing attributes (*PK*, *GSI1SK*, etc.) and avoid reusing attribute across multiple indexes to avoid unnecessary complexity.
 
 | | LSI | GSI |
 |-|-|-|
 | Throughput | Shared with base table | Separately provisioned |
 | Consistency | Allow opting into strongly-consistent reads | Eventually-consistent reads only |
-| Creation time | Must be specified when table created | Can be created and deleted as needed |
+| Creation time | Must be specified when table created | Created and deleted as needed |
 
 ### Item Collections
 - An item collection consists of the group of items that share the same partition key in either the base table or a secondary index.
-- All the items in an item collection will be allocated to the same partition.
-- An item collection is ordered and stored as a B-tree.
-- All items in an LSI are included as part of the same item collection as the base table.
+- All the items in an item collection are ordered and stored as a B-tree and will be allocated to the same partition.
 - The item collection size includes both the size of the items in the base table and the size of the items in the local secondary index.
 
 ![item-collections.png](/img/dynamodb/item-collections.png)
 
 ### Attribute Projections
-- A projection is the set of attributes that is copied from a table into a secondary index.
+- A projection is the set of attributes that is copied into a secondary index.
 - The partition key and sort key of the table are always projected into the index and other attributes can be projected as required.
-- This must be declared when the secondary index is created. There are three options:
+- This must be declared when the secondary index is created:
   - *KEYS_ONLY*: project the table partition key and sort key values, plus the index key values.
-  - *INCLUDE*: Include other additional non-key attributes.
-  - *ALL*: The secondary index includes all of the attributes from the source table.
+  - *INCLUDE*: include other additional non-key attributes.
+  - *ALL*: include all the attributes from the base table.
 - Choosing which attributes to project presents a trade-off between throughput costs and storage costs.
 - It is not possible to change projected attributes once the index has been created.
 
 ### Sparse Indexes
 - When an item is written to the base table, it will be copied into the secondary index only if it has the elements of the key schema for the secondary index.
-- If the item does not have those elements then it will not be copied into the secondary index.
 - A sparse index is a secondary index that intentionally excludes certain items from the base table to help satisfy certain access patterns.
 - An attribute can be removed from an item to remove it from a sparse index.
 
@@ -104,17 +99,22 @@ Remaining: 18, 19, 20, 21
   5. The primary node asynchronously replicates the write to the third storage node.
 - Adaptive capacity automatically spreads throughput around a table to the items that require it.
 
+### Sharding
+- Sharding refers to splitting data across multiple partitions to prevent hot partitions.
+- There are a number of different read-sharding patterns:
+  - Random partitions with scatter-gather at read time.
+  - Grouping items into item collections based on similar time range.
+
 ### Consistency
-- Consistency refers to whether a particular read operation receives all prior write operations.
+- Consistency refers to whether a read operation receives all prior write operations.
 - There are two consistency options available:
-  - *Strong*: Any item read will reflect all prior writes.
-  - *Eventual*: It is possible that read items will not reflect all prior writes.
-- Reads are eventually-consistent by default thought it is possible to opt into strongly-consistent for base tables and LSIs.
-- An eventually-consistent read consumes half the read capacity of a strongly-consistent read.
+  - *Strong*: any item read will reflect all prior writes.
+  - *Eventual*: it is possible that read items will not reflect all prior writes.
+- Reads are eventually-consistent by default though it is possible to opt into strongly-consistent for base tables and LSIs.
 - Sources of eventual consistency include asynchronous data replication from primary to secondary nodes and from base tables to GSIs.
 
 ### Key Overloading 
-- Key overloading refers to using generic names for the primary keys and using different values dependending on the item type.
+- Key overloading refers to using generic names for the primary key attributes and using different values dependending on the item type.
 - Prefixes are used for the partition and sort key values in order to identify the item type and to avoid overlap between different item types.
 - Secondary indexes can be overloaded just like primary keys.
 - Common generic names are: *PK*, *SK*, *GSI1PK*, *GSI1SK*, etc.
@@ -122,15 +122,18 @@ Remaining: 18, 19, 20, 21
 ![key-overloading.png](/img/dynamodb/key-overloading.png)
 
 ### Time-to-Live
-- TTLs allow for automatically deleting items after a specified time on a per-item basis.
-- To use TTLs, an attribute is specified on the table that will serve as the marker for item deletion.
-- The attribute must be of type number.
+- TTLs allow for automatically deleting items after a specified time.
+- An attribute of type *number* is specified on the table that will serve as the marker for item deletion.
 - To expire an item, a Unix timestamp at seconds granularity can be stored in the specified attribute that indicates that time after which the item should be deleted.
 - Items are usually deleted within 48 hours after the time indicated by the attribute.
 
 ### Capacity Units
-- A RCU represents one strongly-consistent read per second or two eventually-consistent reads per second for an item up to 4KB. Transactional read requests require two RCUs to perform one read per second for items up to 4KB. Reading an item larger than 4KB will consume additional RCUs.
-- One WCU represnts one write per second for an item up to 1KB in size. Transactional write requests require two WCUs to perform one write per second for items up to 1KB. Writing an item larger than 1KB will consume additional WCUs.
+- A RCU represents one strongly-consistent read per second or two eventually-consistent reads per second for an item up to 4KB.
+  - Transactional read requests require two RCUs to perform one read per second for items up to 4KB.
+  - Reading an item larger than 4KB will consume additional RCUs.
+- One WCU represents one write per second for an item up to 1KB in size.
+  - Transactional write requests require two WCUs to perform one write per second for items up to 1KB.
+  - Writing an item larger than 1KB will consume additional WCUs.
 
 ### Limits
 - A single item is limited to 400KB.
@@ -164,7 +167,7 @@ Remaining: 18, 19, 20, 21
 - *PutItem* can overwrite an existing item with the same primary key.
 - *UpdateItem* will create an item if it does not exist, otherwise it will only alter the properties specified.
 
-### Batch/Transaction
+### Batch/Transact
 - Batch and transaction actions are used for operating on multiple items in a single request.
 - These actions must specify the full primary key of items.
 - Batch actions allow for reads or writes to succeed or fail independently.
@@ -201,8 +204,8 @@ Remaining: 18, 19, 20, 21
 
 ### Placeholders
 - There are two types of placeholders:
-  - Expression attribute values (e.g. `:foo`) represent an attribute value being evaluated in the request.
-  - Expression attribute names (e.g. `#bar`) specify the names of attributes.
+  - Expression attribute values: represent an attribute value being evaluated in the request (e.g. `:foo`).
+  - Expression attribute names: specify the names of attributes (e.g. `#bar`).
 - Expression attribute values allow for declaring attribute types without complicating expression parsing.
 - It is not required to use expression attribute names though they are required if an attribute name conflicts with a reserved word.
 
@@ -642,42 +645,41 @@ result = dynamodb.transact_write_items(
 
 ## Examples
 
-1. Identify entities and create an entity-relationship diagram
-2. Define the access patterns for each entity and enumerate the index and parameteres used for each one
-3. Model the primary key structure for each entity
-4. Handle additional access patterns with secondary indexes and streams
-
 ### Session Store
 
 #### Entity Relationships
 
 ![session-store-1.png](/img/dynamodb/session-store-1.png)
 
+#### Entity Chart
+| Entity  | PK               | SK |
+|---------|------------------|----|
+| Session | `<SessionToken>` | -  |
+| User    | -                | -  |
+
+| Entity  | GSI1PK       | GSI1SK |
+|---------|--------------|--------|
+| Session | `<Username>` | -      |
+| User    | -            | -      |
+
 #### Access Patterns
-| Access Pattern | Index | Parameters | Notes |
-|-|-|-|-|
-| Create Session | Main table | SessionToken | Use condition expression to enforce uniqueness |
-| Get Session | Main table | SessionToken  | Use filter expression to handle expired tokens |
-| Delete Session (time-based) | N/A | N/A | Handled by TTL |
-| Delete Sessions for User | UserIndex | Username | Find tokens for user |
-|  | Main table | SessionToken | Delete each token |
+| Access Pattern              | Index      | Parameters   | Notes                                          |
+|-----------------------------|------------|--------------|------------------------------------------------|
+| Create session              | Base table | SessionToken | Use condition expression to enforce uniqueness |
+| Get session                 | Base table | SessionToken | Use filter expression to handle expired tokens |
+| Delete session (time-based) | N/A        | N/A          | Handled by TTL                                 |
+| Delete sessions for user    | UserIndex  | Username     | Find tokens for user                           |
+|                             | Main table | SessionToken | Delete each token                              |
 
 #### Table Structure
-- Simple primary key with a partition key of *SessionToken*.
-- GSI called *UserIndex* whose key schema is a simple primary key with a partition key of *Username* and *KEYS_ONLY* projection.
-- TTL property set on the attribute named *TTL*.
 
 ![session-store-2.png](/img/dynamodb/session-store-2.png)
 
-![session-store-3.png](/img/dynamodb/session-store-3.png)
-
-#### Code Snippets
 ```py
 # prevent duplicate session tokens from being written using a condition expression
 created_at = datetime.datetime.now()
 expires_at = created_at + datetime.timedelta(days=7)
-
-client.put_item(
+response = client.put_item(
   TableName='SessionStore',
   Item={
     'SessionToken': { 'S': str(uuid.uuidv4()) },
@@ -687,14 +689,14 @@ client.put_item(
   },
   ConditionExpression='attribute_not_exists(SessionToken)',
 )
-
+```
+```py
 # handle expired items using a filter expression
 epoch_seconds = int(time.time())
-
-client.query(
+results = client.query(
   TableName='SessionStore',
   KeyConditionExpression='#token = :token',
-  FilterExpression='#ttl <= :epoch',
+  FilterExpression='#ttl >= :epoch',
   ExpressionAttributeNames={
     '#token': 'SessionToken',
     '#ttl': 'TTL'
@@ -704,11 +706,15 @@ client.query(
     ':epoch': { 'N': str(epoch_seconds) }
   }
 )
+```
 
+![session-store-3.png](/img/dynamodb/session-store-3.png)
+
+```py
 # query GSI for session tokens related to user and delete each one
 results = client.query(
   TableName='SessionStore',
-  Index='UserIndex',
+  IndexName='UserIndex',
   KeyConditionExpression='#username = :username',
   ExpressionAttributeNames={
     '#username': 'Username',
@@ -733,489 +739,796 @@ for result in results['Items']:
 
 ![e-commerce-1.png](/img/dynamodb/e-commerce-1.png)
 
-| Entity | PK | SK |
-|-|-|-|
-| Customers | CUSTOMER#<Username> | CUSTOMER#<Username> |
+#### Entity Chart
 
+| Entity         | PK                              | SK                              |
+|----------------|---------------------------------|---------------------------------|
+| Customers      | `CUSTOMER#<Username>`           | `CUSTOMER#<Username>`           |
+| CustomerEmails | `CUSTOMEREMAIL#<Email>`         | `CUSTOMEREMAIL#<Email>`         |
+| Addresses      |                                 |                                 |
+| Orders         | `CUSTOMER#<Username>`           | `#ORDER#<OrderId>`              |
+| OrderItems     | `ORDER#<OrderId>#ITEM#<ItemId>` | `ORDER#<OrderId>#ITEM#<ItemId>` |
 
+| Entity         | GSI1PK            | GSI1SK            |
+|----------------|-------------------|-------------------|
+| Customers      |                   |                   |
+| CustomerEmails |                   |                   |
+| Addresses      |                   |                   |
+| Orders         | `ORDER#<OrderId>` | `ORDER#<OrderId>` |
+| OrderItems     | `ORDER#<OrderId>` | `ITEM#<ItemId>`   |
 
+#### Table Structure
 
-• Create Customer (unique on both username and email address)
-• Create / Update / Delete Mailing Address for Customer
-• Place Order
-• Update Order
-• View Customer & Most Recent Orders for Customer
-• View Order & Order Items
+![e-commerce-2.png](/img/dynamodb/e-commerce-2.png)
 
+![e-commerce-3.png](/img/dynamodb/e-commerce-3.png)
 
-With our first example out of the way, let’s work on something a
-little more complex. In this example, we’re going to model the
-ordering system for an e-commerce application. We’ll still have the
-training wheels on, but we’ll start to look at important DynamoDB
-concepts like primary key overloading and handling relationships
-between entities.
-Let’s get started.
-19.1. Introduction
-In this example, you’re working on part of an e-commerce store.
-For this part of our application, we’re mostly focused on two core
-areas: customer management and order management. A different
-service in our application will handle things like inventory, pricing,
-and cart management.
-I’m going to use screens from ThriftBooks.com to act as our
-example application. I love using real-life examples as it means I
-don’t have to do any UI design. Fortunately, I have some children
-who are voracious readers and a wife that is trying to keep up with
-their needs. This means we have some great example data. Lucky
-you!
-We want to handle the following screens. First, the Account
-Overview page:
-301
-Notice that this page includes information about the user, such as
-the user’s email address, as well as a paginated list of the most
-recent orders from the user. The information about a particular
-order is limited on this screen. It includes the order date, order
-number, order status, number of items, and total cost, but it doesn’t
-include information about the individual items themselves. Also
-notice that there’s something mutable about orders—the order
-status—meaning that we’ll need to change things about the order
-over time.
-To get more information about an order, you need to click on an
-order to get to the Order Detail page, shown below.
-302
-The Order Detail page shows all information about the order,
-including the summary information we already saw but also
-additional information about each of the items in the order and the
-payment and shipping information for the order.
-Finally, the Account section also allows customers to save addresses.
-The Addresses page looks as follows:
-A customer can save multiple addresses for use later on. Each
-address has a name ("Home", "Parents' House") to identify it.
-303
-Let’s add a final requirement straight from our Product Manager.
-While a customer is identified by their username, a customer is also
-required to give an email address when signing up for an account.
-We want both of these to be unique. There cannot be two customers
-with the same username, and you cannot sign up for two accounts
-with the same email address.
-With these needs in mind, let’s build our ERD and list out our
-access patterns.
-19.2. ERD and Access Patterns
-As always, the first step to data modeling is to create our entityrelationship diagram. The ERD for this use case is below:
-Our application has four entities with three relationships. First,
-304
-there are Customers, as identified in the top lefthand corner. A
-Customer may have multiple Addresses, so there is a one-to-many
-relationship between Customers and Addresses as shown on the
-lefthand side.
-Moving across the top, a Customer may place multiple Orders over
-time (indeed, our financial success depends on it!), so there is a oneto-many relationship between Customers and Orders. Finally, an
-Order can contain multiple OrderItems, as a customer may
-purchase multiple books in a single order. Thus, there is a one-tomany relationship between Orders and OrderItems.
-Now that we have our ERD, let’s create our entity chart and list our
-access patterns.
-The entity chart looks like this:
-Entity PK SK
-Customers
-Addresses
-Orders
-OrderItems
-Table 16. E-commerce entity chart
-And our acccess patterns are the following:
-• Create Customer (unique on both username and email address)
-• Create / Update / Delete Mailing Address for Customer
-• Place Order
-• Update Order
-• View Customer & Most Recent Orders for Customer
-• View Order & Order Items
-With these access patterns in mind, let’s start our data modeling.
-305
-19.3. Data modeling walkthrough
-As I start working on a data modeling, I always think about the
-same three questions:
-1. Should I use a simple or composite primary key?
-2. What interesting requirements do I have?
-3. Which entity should I start modeling first?
-In this example, we’re beyond a simple model that just has one or
-two entities. This points toward using a composite primary key.
-Further, we have a few 'fetch many' access patterns, which strongly
-points toward a composite primary key. We’ll go with that to start.
-In terms of interesting requirements, there are two that I noticed:
-1. The Customer item needs to be unique on two dimensions:
-username and email address.
-2. We have a few patterns of "Fetch parent and all related items"
-(e.g. Fetch Customer and Orders for Customer). This indicates
-we’ll need to "pre-join" our data by locating the parent item in
-the same item collection as the related items.
-In choosing which entity to start with, I always like to start with a
-'core' entity in the application and then work outward as we model
-it out. In this application, we have two entities that are pretty
-central: Customers and Orders.
-I’m going to start with Customers for two reasons:
-1. Customers have a few uniqueness requirements, which generally
-require modeling in the primary key.
-2. Customers are the parent entity for Orders. I usually prefer to
-start with parent entities in the primary key.
-306
-With that in mind, let’s model out our Customer items.
-19.3.1. Modeling the Customer entity
-Starting with the Customer item, let’s think about our needs around
-the Customer.
-First, we know that there are two one-to-many relationships with
-Customers: Addresses and Orders. Given this, it’s likely we’ll be
-making an item collection in the primary key that handles at least
-one of those relationships.
-Second, we have two uniqueness requirements for Customers:
-username and email address. The username is used for actual
-customer lookups, whereas the email address is solely a
-requirement around uniqueness.
-We’re going to focus on handling the uniquness requirements first
-because that must be built into the primary key of the main table.
-You can’t handle this via a secondary index.
-We discussed uniqueness on two attributes in Chapter 16. You can’t
-build uniqueness on multiple attributes into a single item, as that
-would only ensure the combination of the attributes is unique.
-Rather, we’ll need to make multiple items.
-Let’s create two types of items—Customers and CustomerEmails—
-with the following primary key patterns:
-Customer:
-• PK: CUSTOMER#<Username>
-• SK: CUSTOMER#<Username>
-CustomerEmail:
-307
-• PK: CUSTOMEREMAIL#<Email>
-• SK: CUSTOMEREMAIL#<Email>
-We can load our table with some items that look like the following:
-So far, our service has two customers: Alex DeBrie and Vito
-Corleone. For each customer, there are two items in DynamoDB.
-One item tracks the customer by username and includes all
-information about the customer. The other item tracks the
-customer by email address and includes just a few attributes to
-identify to whom the email belongs.
-While this table shows the CustomerEmail items, I will hide them
-when showing the table in subsequent views. They’re not critical to
-the rest of the table design, so hiding them will de-clutter the table.
-We can update our entity chart to add the CustomerEmails item
-type and to fill out the primary key patterns for our first two items:
-Entity PK SK
-Customers CUSTOMER#<Username> CUSTOMER#<Username>
-CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
-Addresses
-Orders
-OrderItems
-308
-Table 17. E-commerce entity chart
-Finally, when creating a new customer, we’ll want to only create the
-customer if there is not an existing customer with the same
-username and if this email address has not been used for another
-customer. We can handle that using a DynamoDB Transaction.
-The code below shows the code to create a customer with proper
-validation:
+![e-commerce-4.png](/img/dynamodb/e-commerce-4.png)
+
+![e-commerce-5.png](/img/dynamodb/e-commerce-5.png)
+
+![e-commerce-6.png](/img/dynamodb/e-commerce-6.png)
+
+#### Access Patterns
+
+| Access pattern | Index | Parameters | Notes |
+|-|-|-|-|
+| Create customer               | N/A        | N/A      | Use *TransactWriteItems* to create *Customer* and *CustomerEmail* to ensure uniqueness |
+| Create/update addresss        | N/A        | N/A      | Use *UpdateItem* to update the *Addresses* attribute on the Customer item              |
+| View customer & recent orders | Base table | Username | Use `ScanIndexForward=False` to fetch in descending order                              |
+| Save order                    | N/A        | N/A      | Use *TransactWriteItems* to create *Order* and *OrderItems*                            |
+| Update order                  | N/A        | N/A      | Use *UpdateItem* to update the status of an *Order*                                    |
+| View order & order items      | GSI1       | OrderId  |                                                                                        |
+
+#### Code Snippets
+```py
+# ensure uniqueness of both the username and email address
 response = client.transact_write_items(
   TransactItems=[
-  {
-  'Put': {
-  'TableName': 'EcommerceTable',
-  'Item': {
-  'PK': { 'S': 'CUSTOMER#alexdebrie' },
-  'SK': { 'S': 'CUSTOMER#alexdebrie' },
-  'Username': { 'S': 'alexdebrie' },
-  'Name': { 'S': 'Alex DeBrie' },
-  ... other attributes ...
-  },
-  'ConditionExpression': 'attribute_not_exists(PK)
-  }
-  },
-  {
-  'Put': {
-  'TableName': 'EcommerceTable',
-  'Item': {
-  'PK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
-  'SK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
-  },
-  'ConditionExpression': 'attribute_not_exists(PK)
-  }
-  }
+    {
+      'Put': {
+        'TableName': 'EcommerceTable',
+        'Item': {
+          'PK': { 'S': 'CUSTOMER#alexdebrie' },
+          'SK': { 'S': 'CUSTOMER#alexdebrie' },
+          'Username': { 'S': 'alexdebrie' },
+          'Name': { 'S': 'Alex DeBrie' },
+          # ...
+        },
+        'ConditionExpression': 'attribute_not_exists(PK)',
+      },
+    },
+    {
+      'Put': {
+        'TableName': 'EcommerceTable',
+        'Item': {
+          'PK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
+          'SK': { 'S': 'CUSTOMEREMAIL#alexdebrie1@gmail.com' },
+        },
+        'ConditionExpression': 'attribute_not_exists(PK)',
+      },
+    },
   ]
 )
-Our TransactWriteItems API has two write requests: one to write
-the Customer item and one to write the CustomerEmail item.
-Notice that both have condition expressions to confirm that there is
-not an existing item with the same PK. If one of the conditions is
-violated, it means that either the username or email address is
-already in use and thus the entire transaction will be cancelled.
-Now that we’ve handled our Customer item, let’s move on to one of
-309
-our relationships. I’ll go with Addresses next.
-19.3.2. Modeling the Addresses entity
-There is a one-to-many relationship between Customers and
-Addresses. We can use strategies from Chapter 11 to see how we can
-handle the relationship.
-The first thing we should ask is whether we can denormalize the
-relationship. When denormalizing by using a complex attribute, we
-need to ask two things:
-1. Do we have any access patterns that fetch related entity directly
-by values of the related entity, outside the context of the parent?
-2. Is the amount of data in the complex attribute unbounded?
-In this case, the answer to the first question is 'No'. We will show
-customers their saved addresses, but it’s always in the context of the
-customer’s account, whether on the Addresses page or the Order
-Checkout page. We don’t have an access pattern like "Fetch
-Customer by Address".
-The answer to the second question is (or can be) 'No' as well. While
-we may not have considered this limitation upfront, it won’t be a
-burden on our customers to limit them to only 20 addresses. Notice
-that data modeling can be a bit of a dance. You may not have
-thought to limit the number of saved addresses during the initial
-requirements design, but it’s easy to add on to make the data
-modeling easier.
-Because both answers were 'No', we can use the denormalization
-strategy and use a complex attribute. Let’s store each customer’s
-addresses on the Customer item.
-Our updated table looks as follows:
-310
-Notice that our Customer items from before have an Addresses
-attribute outlined in red. The Addresses attribute is of the map
-type and includes one or more named addresses for the customer.
-We can update our entity chart as follows:
-Entity PK SK
-Customers CUSTOMER#<Username> CUSTOMER#<Username>
-CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
-Addresses N/A N/A
-Orders
-OrderItems
-Table 18. E-commerce entity chart
-There is no separate Address item type, so we don’t have a PK or SK
-pattern for that entity.
-19.3.3. Modeling Orders
-Now let’s move on to the Order item. This is our second one-tomany relationship with the Customer item.
-Let’s walk through the same analysis as we did with Addresses—can
-we handle this relationship through denormalization?
-Unfortunately, it doesn’t appear to be a good idea here. Because
-DynamoDB item sizes are limited to 400KB, you can only
-311
-denormalize and store as a complex attribute if there is a limit to
-the number of related items. However, we don’t want to limit the
-number of orders that a customer can make with us—we would be
-leaving money on the table! Because of that, we’ll have to find a
-different strategy.
-Notice that we have a join-like access pattern where we need to
-fetch both the Customer and the Orders in a single request. The
-next strategy, and the most common one for one-to-many
-relationships, is to use the primary key plus the Query API to 'prejoin' our data.
-The Query API can only fetch items with the same partition key, so
-we need to make sure our Order items have the same partition key
-as the Customer items. Further, we want to retrieve our Orders by
-the time they were placed, starting with the most recent.
-Let’s use the following pattern for our Order items:
-• PK: CUSTOMER#<Username>
-• SK: #ORDER#<OrderId>
-For the OrderId, we’ll used a KSUID. KSUIDs are unique identifiers
-that include a timestamp in the beginning. This allows for
-chronological ordering as well as uniqueness. You can read more
-about KSUIDs in Chapter 14.
-We can add a few Order items to our table to get the following:
-312
-We’ve added three Order items to our table, two for Alex DeBrie
-and one for Vito Corleone. Notice that the Orders have the same
-partition key and are thus in the same item collection as the
-Customer. This means we can fetch both the Customer and the
-most recent Orders in a single request.
-An additional note—see that we added a prefix of # to our Order
-items. Because we want the most recent Orders, we will be fetching
-our Orders in descending order. This means our Customer item
-needs to be after all the Order items so that we can fetch the
-Customer item plus the end of the Order items. If we didn’t have
-the # prefix for Order items, then Orders would show up after the
-Customer and would mess up our ordering.
-To handle our pattern to retrieve the Customer and the most recent
-Orders, we can write the following Query:
-resp = client.query(
+
+# retrieve customer and most recent orders
+response = client.query(
   TableName='EcommerceTable',
   KeyConditionExpression='#pk = :pk',
   ExpressionAttributeNames={
-  '#pk': 'PK'
+    '#pk': 'PK'
   },
   ExpressionAttributeValues={
-  ':pk': { 'S': 'CUSTOMER#alexdebrie' }
+    ':pk': { 'S': 'CUSTOMER#alexdebrie' }
   },
+  # start at the end of the item collection and read in descending order
   ScanIndexForward=False,
   Limit=11
 )
-313
-We use a key expression that uses the proper PK to find the item
-collection we want. Then we set ScanIndexForward=False so that it
-will start at the end of our item collection and go in descending
-order, which will return the Customer and the most recent Orders.
-Finally, we set a limit of 11 so that we get the Customer item plus
-the ten most recent orders.
-We can update our entity chart as follows:
-Entity PK SK
-Customers CUSTOMER#<Username> CUSTOMER#<Username>
-CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
-Addresses N/A N/A
-Orders CUSTOMER#<Username> #ORDER#<OrderId>
-OrderItems
-Table 19. E-commerce entity chart
-19.3.4. Modeling the Order Items
-The final entity we need to handle is the OrderItem. An OrderItem
-refers to one of the items that was in an order, such as a specific
-book or t-shirt.
-There is a one-to-many relationship between Orders and
-OrderItems, and we have an access pattern where we want join-like
-functionality as we want to fetch both the Order and all its
-OrderItems for the OrderDetails page.
-Like in the last pattern, we can’t denormalize these onto the Order
-item as the number of items in an order is unbounded. We don’t
-want to limit the number of items a customer can include in an
-order.
-Further, we can’t use the same strategy of a primary key plus Query
-API to handle this one-to-many relationship. If we did that, our
-314
-OrderItems would be placed between Orders in the base table’s
-item collections. This would significantly reduce the efficiency of
-the "Fetch Customer and Most Recent Orders" access pattern we
-handled in the last section as we would now be pulling back a ton of
-extraneous OrderItems with our request.
-That said, the principles we used in the last section are still valid.
-We’ll just handle it in a secondary index.
-First, let’s create the OrderItem entity in our base table. We’ll use
-the following pattern for OrderItems:
-• PK: ORDER#<OrderId>#ITEM#<ItemId>
-• SK: ORDER#<OrderId>#ITEM#<ItemId>
-Our table will look like this:
-We have added two OrderItems into our table. They are outlined in
-red at the bottom. Notice that the OrderItems have the same
-OrderId as an Order in our table but that the Order and OrderItems
-are in different item collections.
-To get them in the same item collection, we’ll add some additional
-properties to both Order and OrderItems.
-315
-The GSI1 structure for Orders will be as follows:
-• GSI1PK: ORDER#<OrderId>
-• GSI1SK: ORDER#<OrderId>
-The GSI1 structure for OrderItems will be as follows:
-• GSI1PK: ORDER#<OrderId>
-• GSI1SK: ITEM#<ItemId>
-Now our base table looks as follows:
-Notice that our Order and OrderItems items have been decorated
-with the GSI1PK and GSI1SK attributes.
-We can then look at our GSI1 secondary index:
-316
-Now our Orders and OrderItems have been re-arranged so they are
-in the same item collection. As such, we can fetch an Order and all
-of its OrderItems by using the Query API against our secondary
-index.
-The code to fetch an Order and all of its OrderItems is as follows:
-resp = client.query(
+
+# fetch an order and all its items
+response = client.query(
   TableName='EcommerceTable',
   IndexName='GSI1',
   KeyConditionExpression='#gsi1pk = :gsi1pk',
   ExpressionAttributeNames={
-  '#gsi1pk': 'GSI1PK'
+    '#gsi1pk': 'GSI1PK'
   },
   ExpressionAttributeValues={
-  ':gsi1pk': 'ORDER#1VrgXBQ0VCshuQUnh1HrDIHQNwY'
+    ':gsi1pk': 'ORDER#1VrgXBQ0VCshuQUnh1HrDIHQNwY'
   }
 )
-We can also update our entity chart as follows:
+```
+
+
+### Big Time Deals
+
+#### Entity Relationships
+
+![big-time-deals-1.png](/img/dynamodb/big-time-deals-1.png)
+
+#### Entity Chart
+| Entity       | PK              | SK              |
+|-|-|-|
+| Deal         | `DEAL#<DealId>` | `DEAL#<DealId>` |
+| Brand        | `BRAND#<Brand>` | `BRAND#<Brand>` |
+| Brand Like   | `BRANDLIKE#<Brand>#<Username>` | `BRANDLIKE#<Brand>#<Username>` |
+| Category     |    | |
+| FeaturedDeal |    | |
+| Page         |    | |
+| User         |    | |
+| Message      |    | |
+
+
+| Entity       | GSI1PK                       | GSI1SK          |
+|-|-|-|
+| Deal         | `DEALS#<TruncatedTimestamp>` | `DEAL#<DealId>` |
+| Brand        |    | |
+| Brand Like   |    | |
+| Category     |    | |
+| FeaturedDeal |    | |
+| Page         |    | |
+| User         |    | |
+| Message      |    | |
+
+| Entity       | GSI2PK                               | GSI1SK          |
+|-|-|-|
+| Deal         | `BRAND#<Brand>#<TruncatedTimestamp>` | `DEAL#<DealId>` |
+| Brand        |    | |
+| Category     |    | |
+| FeaturedDeal |    | |
+| Page         |    | |
+| User         |    | |
+| Message      |    | |
+
+| Entity       | GSI2PK                                     | GSI1SK          |
+|-|-|-|
+| Deal         | `CATEGORY#<Category>#<TruncatedTimestamp>` | `DEAL#<DealId>` |
+| Brand        |    | |
+| Category     |    | |
+| FeaturedDeal |    | |
+| Page         |    | |
+| User         |    | |
+| Message      |    | |
+
+
+
+#### Table Structure
+
+##### Deal
+
+![big-time-deals-2.png](/img/dynamodb/big-time-deals-2.png)
+
+![big-time-deals-3.png](/img/dynamodb/big-time-deals-3.png)
+
+```py
+def fetch_items_for_date(date, last_seen='$', limit=25):
+  response = client.query(
+    TableName='BigTimeDeals',
+    Index='GSI1',
+    KeyConditionExpression='#pk = :pk AND #sk < :sk',
+    ExpressionAttributeNames={
+      '#pk': 'PK',
+      '#sk': 'SK'
+    },
+    ExpressionAttributeValues={
+      ':pk': { 'S': f"DEALS#{date.strftime('%Y-%m-%dT00:00:00')}" },
+      'sk': { 'S': f'DEAL#{last_seen}' }
+    },
+    ScanIndexForward=False,
+    Limit=limit
+  )
+
+# fetch latest 25 deals
+def get_deals(date, last_deal_seen='$'):
+  deals = []
+  count = 0
+  while len(deals) < 25 and count < 5:
+    items = fetch_items_for_date(date, last_deal_seen)
+    for item in items:
+      deals.append(Deal(
+        title=item['Title']['S'],
+        deal_id=item['DealId']['S'],
+        link=item['Link']['S'],
+        # ...
+      ))
+    date = date - datetime.timedelta(days=1)
+    count += 1
+
+  return deals[:24]
+```
+
+![big-time-deals-4.png](/img/dynamodb/big-time-deals-4.png)
+
+```py
+# retrieve cached item from random partition
+shard = random.randint(1, 10)
+response = client.get_item(
+  TableName='BigTimeDeals',
+  Key={
+    'PK': { 'S': f"DEALSCACHE#{shard}" },
+    'SK': { 'S': f"DEALSCACHE#{shard}" },
+  }
+)
+```
+
+##### Brand
+
+![big-time-deals-5.png](/img/dynamodb/big-time-deals-5.png)
+
+```py
+response = dynamodb.transact_write_items(
+  TransactItems=[
+    {
+      'Put': {
+        'TableName': 'BigTimeDeals',
+        'Item': {
+          'PK': { 'S': 'BRANDLIKE#APPLE#testuser' },
+          'SK': { 'S': 'BRANDLIKE#APPLE#testuser' },
+          # ...
+        },
+        'ConditionExpression': 'attribute_not_exists(PK)',
+      }
+    },
+  ]
+)
+```
+
+  {
+  "Update": {
+  "Key": {
+  "PK": { "S": "BRAND#APPLE" },
+  "SK": { "S": "BRAND#APPLE" },
+  },
+  "TableName": "BigTimeDeals",
+  "ConditionExpression": "attribute_exists(PK)"
+  "UpdateExpression": "SET #likes = #likes + :incr",
+  "ExpressionAttributeNames": {
+  "#likes": "LikesCount"
+  },
+  "ExpressionAttributeValues": {
+  ":incr": { "N": "1" }
+  }
+  }
+  }
+  ]
+
+
+The first tries to create a Brand Like item for the User "alexdebrie" for the Brand "Apple". Notice that it includes a condition expression to ensure the Brand Like item doesn’t already exist, which would indicate the user already liked this Brand.  The second operation increments the LikesCount on the Apple Brand item by 1. It also includes a condition expression to ensure the Brand exists.  Remember that each operation will succeed only if the other operation also succeeds. If the Brand Like already exists, the LikesCount won’t be incremented. If the Brand doesn’t exist, the Brand Like won’t be created.
+
+Handling Brand Watches
+In addition to liking a Brand, users may also watch a Brand. When a
+user is watching a Brand, they will also be notified whenever a new
+Deal is added for a Brand.
+The patterns here are pretty similar to the Brand Like discussion,
+with one caveat: our internal system needs to be able to find all
+watchers for a Brand so that we can notify them.
+Because of that, we’ll put all Brand Watch items in the same item
+collection so that we can run a Query operation on it.
+We’ll use the following primary key pattern:
+• PK: BRANDWATCH#<Brand>
+• SK: USER#<Username>
+Notice that Username is not a part of the partition key in this one,
+so all Brand Watch items will be in the same item collection.
+We’ll still use the same DynamoDB Transaction workflow when
+adding a watcher to increase the WatchCount while ensuring that
+the user has not previously watched the Brand.
+Sending New Brand Deal Messages to Brand Watchers
+350
+One of our access patterns is to send a New Brand Deal Message to
+all Users that are watching a Brand. Let’s discuss how to handle that
+here.
+Remember that we can use DynamoDB Streams to react to changes
+in our DynamoDB table. To handle this access pattern, we will
+subscribe to the DynamoDB stream. Whenever we receive an event
+on our stream, we will do the following:
+1. Check to see if the event is indicating that a Deal item was
+inserted into our table;
+2. If yes, use the Query operation to find all BrandWatch items for
+the Brand of the new Deal;
+3. For each BrandWatch item found, create a new Message item for
+the user that alerts them of the new Brand Deal.
+For steps 2 & 3, the code will be similar to the following:
+resp = dynamodb.query(
+  TableName='BigTimeDeals',
+  KeyConditionExpression="#pk = :pk",
+  ExpressionAttributeNames={
+  '#pk': "PK"
+  },
+  ExpressionAttributeValues={
+  ':pk': { 'S': "BRANDWATCH#APPLE" }
+  }
+)
+for item in resp['Items']:
+  username = item['Username']['S']
+  send_message_to_brand_watcher(username)
+First, we run a Query operation to fetch all the watchers for the
+given Brand. Then we send a message to each watcher to alert them
+of the new deal.
+Patterns like this make it much easier to handle reactive
+functionality without slowing down the hot paths of your
+application.
+351
+20.3.3. Modeling the Category item
+Now that we’ve handled the Brand item, let’s handle the Category
+item as well. Categories are very similar to Brands, so we won’t
+cover it in quite as much detail.
+There are two main differences between the Categories and Brands:
+1. Categories do not have a "Fetch all Categories" access pattern, as
+there are only eight categories that do not change.
+2. The Categories page has a list of 5-10 "Featured Deals" within the
+Category.
+For the first difference, that means we won’t have a singleton
+"CATEGORIES" item like we had with Brands.
+For the second difference, we need to figure out how to indicate a
+Deal is 'Featured' within a particular Category. One option would be
+to add some additional attributes and use a sparse index pattern to
+group a Category with its Featured Deals. However, that seems a bit
+overweight. We know that we only have a limited number of
+Featured Deals within a particular Category.
+Instead, let’s combine our two denormalization strategies from the
+one-to-many relationships chapter. We’ll store information about
+Featured Deals in a complex attribute on the Category itself, and
+this information will be duplicated from the underlying Deal item.
+Our Category items would look as follows:
+352
+Each Category item includes information about the Featured Deals
+on the item directly. Remember that setting Featured Deals is an
+internal use case, so we can program our internal CMS such that it
+includes all information about all Featured Deals whenever an
+editor is setting the Featured Deals for a Category.
+Thus, for modeling out the Category items and related entities, we
+create the following item types:
+Category
+• PK: CATEGORY#<Category>
+• SK: CATEGORY#<Category>
+CategoryLike
+• PK: CATEGORYLIKE#<Category>#<Username>
+• SK: CATEGORYLIKE#<Category>#<Username>
+CategoryWatch
+• PK: CATEGORYWATCH#<Category>
+• SK: USER#<Username>
+20.3.4. Featured Deals and Editors' Choice
+We’re almost done with the Deals-related portion of this data
+353
+model. The last thing we need to handle is around the Featured
+Deals on the front page of the application and the Editor’s Choice
+page.
+For me, this problem is similar to the "Featured Deals for Category"
+problem that we just addressed. We could add some attributes to a
+Deal to indicate that it’s featured and shuttle them off into a
+secondary index. In contrast, we could go a much simpler route by
+just duplicating some of that data elsewhere.
+Let’s use a combination of the 'singleton item' strategy we discussed
+earlier with this duplication strategy. We’ll create two new singleton
+items: one for the Front Page and one for the Editor’s Choice page.
+The table might look as follows:
+Notice the singleton items for the Front Page and the Editor’s
+Choice page. Additionally, like we did with the Deals Cache items,
+we could copy those across a number of partitions if needed. This is
+a simple, effective way to handle these groupings of featured deals.
+Let’s take a breath here and take a look at our updated entity chart
+with all Deal-related items finished.
+354
 Entity PK SK
-Customers CUSTOMER#<Username> CUSTOMER#<Username>
-CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
-317
-Entity PK SK
-Addresses N/A N/A
-Orders CUSTOMER#<Username> #ORDER#<OrderId>
-OrderItems ORDER#<OrderId>#ITEM#
-<ItemId>
-ORDER#<OrderId>#ITEM#
-<ItemId>
-Table 20. E-commerce entity chart
-Further, let’s make a corresponding entity chart for GSI1 so we can
-track items in that index:
+Deal DEAL#<DealId> DEAL#<DealId>
+Brand BRAND#<Brand> BRAND#<Brand>
+Brands BRANDS BRANDS
+BrandLike BRANDLIKE#<Brand>#<Us
+ername>
+BRANDLIKE#<Brand>#<Us
+ername>
+BrandWatch BRANDWATCH#<Brand> USER#<Username>
+Category CATEGORY#<Category> CATEGORY#<Category>
+CategoryLike CATEGORYLIKE#<Categor
+y>#<Username>
+CATEGORYLIKE#<Categor
+y>#<Username>
+CategoryWatch CATEGORYWATCH#<Catego
+ry>
+USER#<Username>
+FrontPage FRONTPAGE FRONTPAGE
+Editor’s Choice EDITORSCHOICE EDITORSCHOICE
+User
+Message
+Table 28. Big Time Deals entity chart
+We also have some attributes in our secondary indexes. To save
+space, I’ll only show items that have attributes in those indexes.
+First, our GSI1 secondary index:
 Entity GSI1PK GSI1SK
-Customers
-CustomerEmails
-Addresses
-Orders ORDER#<OrderId> ORDER#<OrderId>
-OrderItems ORDER#<OrderId> ITEM#<ItemId>
-Table 21. E-commerce GSI1 entity chart
-19.4. Conclusion
-We’re starting to get warmed up with our DynamoDB table design.
-In this chapter, we looked at some advanced patterns including
-using primary key overloading to create item collections with
-heterogeneous items.
-Let’s review our final solution.
-Table Structure
-Our table uses a composite primary key with generic names of PK
-and SK for the partition key and sort key, respectively. We also have
-a global secondary index named GSI1 with similarly generic names
-of GSI1PK and GSI1SK for the partition and sort keys.
-318
-Our final entity chart for the main table is as follows:
+Deal DEALS#<TruncatedTimestamp> DEAL#<DealId>
+Table 29. Big Time Deals GSI1 entity chart
+Then, our GSI2 secondary index:
+Entity GSI2PK GSI2SK
+Deal BRAND#<Brand>#<TruncatedTi
+mestamp>
+DEAL#<DealId>
+Table 30. Big Time Deals GSI2 entity chart
+And finally, the GSI3 secondary index:
+355
+Entity GSI3PK GSI3SK
+Deal CATEGORY#<Category>#<Trunc
+atedTimestamp>
+DEAL#<DealId>
+Table 31. Big Time Deals GSI3 entity chart
+20.3.5. Modeling the User item
+Now that we have most of the entities around Deals modeled, let’s
+move on to Users and Messages.
+In addition to the simple Create / Read / Update User access
+patterns, we have the following access patterns that are based on
+Users:
+• Fetch all Messages for User
+• Fetch all Unread Messages for User
+• Mark Message as Read
+• Send new Hot Deal Message to all Users
+Remember that we handled the "Send new Brand Deal Message to
+all Brand Watchers" and "Send new Category Deal Message to all
+Category Watchers" in the sections on Brands and Categories,
+respectively.
+I’m going to start with the last access pattern—send new Hot Deal
+Message to All Users—then focus on the access patterns around
+fetching Messages.
+The User item and Finding all Users
+When we think about the "Send new Hot Deal Message to all Users",
+it’s really a two-step operation:
+356
+1. Find all Users in our application
+2. For each User, send a Message
+For the 'find all Users' portion of it, we might think to mimic what
+we did for Brands: use a singleton item to hold all usernames in an
+attribute. However, the number of Users we’ll have is unbounded. If
+we want our application to be successful, we want to have as many
+Users as possible, which means we want to exceed 400KB of data.
+A second approach we could do is to put all Users into a single
+partition. For example, we could have a secondary index where
+each User item had a static partition key like USERS so they were all
+grouped together. However, this could lead to hot key issues. Each
+change to a User item would result in a write to the same partition
+in the secondary index, which would result in a huge number of
+writes.
+Instead, let’s use one of our sparse indexing strategies from Chapter
+13. Here, we want to use the second type of sparse index, which
+projects only a single type of entity into a table.
+To do this, we’ll create a User entity with the following attributes:
+• PK: USER#<Username>
+• SK: USER#<Username>
+• UserIndex: USER#<Username>
+Our table with some User items will look as follows:
+357
+Notice that we have three User items in our table. I’ve also placed a
+Deal item to help demonstrate how our sparse index works.
+Each of our User items has a UserIndex attribute. We will create a
+secondary index that uses the UserIndex attribute as the partition
+key. That index looks as follows:
+Notice that only our User items have been copied into this table.
+Because other items won’t have that attribute, this is a sparse index
+containing just Users.
+Now if we want to message every User in our application, we can
+use the following code:
+resp = dynamodb.scan(
+  TableName='BigTimeDeals',
+  IndexName='UserIndex'
+)
+for item in resp['Items']:
+  username = item['Username']['S']
+  send_message_to_user(username)
+358
+This is a similar pattern to what we did when sending messages to
+Brand or Category Watchers. However, rather than using the Query
+operation on a partition key, we’re using the Scan operation on an
+index. We will scan our index, then message each User that we find
+in our index.
+One final note on sparse indexes: an astute observer might note
+that all of our secondary indexes are sparse indexes. After all, only
+the Deal item has been projected into GSI1, GSI2, and GSI3. What’s
+the difference here?
+With the UserIndex, we’re intentionally using the sparseness of the
+index to aid in our filtering strategy. As we move on, we may
+include other items in our GSI1 index. However, we can’t add other
+items into our UserIndex as that would defeat the purpose of that
+index.
+Handling our User Messages
+The final access patterns we need to handle are with the Messages
+for a particular User. There are three access patterns here:
+• Find all Messages for User
+• Find all Unread Messages for User
+• Mark Message as Read
+Notice the first two are the same pattern with an additional filter
+condition. Let’s think through our different filtering strategies from
+Chapter 13 on how we handle the two different patterns.
+We probably won’t want to distinguish between these using a
+partition key (e.g. putting read and unread messages for a User in
+different partitions). This would require twice as many reads on the
+359
+'Find all Messages' access pattern, and it will be difficult to find the
+exact number of Messages we want without overfetching.
+Likewise, we can’t use the sort key to filter here, whether we use it
+directly or as part of a composite sort key. The composite sort key
+works best when you always want to filter on a particular value.
+Here, we sometimes want to filter and sometimes don’t.
+That leaves us to two types of strategies: using a sparse index, or
+overfetching and then filtering apart from the core access of
+DynamoDB, either with a filter expression or with client-side
+filtering. I like to avoid the overfetching strategies unless there are a
+wide variety of filtering patterns we need to support. Since we only
+need to provide one here, let’s go with a sparse index.
+When modeling Users, we used the sparse index to project only a
+particular type of entity into an index. Here, we’re going to use the
+other sparse index strategy where we filter within a particular entity
+type.
+Let’s create our Message item with the following pattern:
+• PK: MESSAGES#<Username>
+• SK: MESSAGE#<MessageId>
+• GSI1PK: MESSAGES#<Username>
+• GSI1SK: MESSAGE#<MessageId>
+For the MessageId, we’ll stick with the KSUID that we used for
+Deals and discussed in Chapter 14.
+Note that the PK & SK patterns are the exact same as the GSI1PK
+and GSI1SK patterns. The distinction is that the GSI1 attributes will
+only be added for unread Messages. Thus, GSI1 will be a sparse index
+for unread Messages.
+Our table with some Message items looks as follows:
+360
+We have four Messages in our table. They’re grouped according to
+Username, which makes it easy to retrieve all Messages for a User.
+Also notice that three of the Messages are unread. For those three
+Messages, they have GSI1PK and GSI1SK values.
+When we look at our GSI1 secondary index, we’ll see only unread
+Messages for a User:
+361
+This lets us quickly retrieve unread Messages for a User.
+The modeling part is important, but I don’t want to leave out how
+we implement this in code either. Let’s walk through a few code
+snippets.
+First, when creating a new Message, it will be marked as Unread.
+Our create_message function will handle adding the GSI1
+attributes:
+def create_message(message):
+  resp = client.put_item(
+  TableName='BigTimeDeals',
+  Item={
+  'PK': { 'S': f"MESSAGE#{message.username}" },
+  'SK': { 'S': f"MESSAGE#{message.created_at}" },
+  'Subject': { 'S': f"MESSAGE#{message.subject}" },
+  'Unread': { 'S': "True" },
+  'GSI1PK': { 'S': f"MESSAGE#{message.username}" },
+  'GSI1SK': { 'S': f"MESSAGE#{message.created_at}" },
+  }
+  )
+  return message
+Notice that the caller of our function doesn’t need to add the GSI1
+values or even think about whether the message is unread. Because
+it’s unread by virtue of being new, we can set that property and
+both of the GSI1 properties in the data access layer.
+Second, let’s see how we would update a Message to mark it read:
+362
+def mark_message_read(message):
+  resp = client.update_item(
+  TableName='BigTimeDeals',
+  Key={
+  'PK': { 'S': f"MESSAGE#{message.username}" },
+  'SK': { 'S': f"MESSAGE#{message.created_at}" },
+  },
+  UpdateExpression="SET #unread = :false, REMOVE #gsi1pk, gsi1sk",
+  ExpressionAttributeNames={
+  '#unread': 'Unread',
+  '#gsi1pk': 'GSI1PK',
+  '#gsi1sk': 'GSI1SK'
+  },
+  ExpressionAttributeValues={
+  ':false': { 'S': 'False' }
+  }
+  )
+  return message
+In this method, we would run an UpdateItem operation to do two
+things:
+1. Change the Unread property to "False", and
+2. Remove the GSI1PK and GSI1SK attributes so that it will be
+removed from the sparse index.
+Again, the calling portion of our application doesn’t need to worry
+about modifying indexing attributes on our item. That is all left in
+the data access portion.
+Finally, let’s see our code to retrieve all messages:
+363
+def get_messages_for_user(username, unread_only=False):
+  args = {
+  'TableName': 'BigTimeDeals',
+  'KeyConditionExpression': '#pk = :pk',
+  'ExpressionAttributeNames': {
+  '#pk': 'PK'
+  },
+  'ExpressionAttributeValues': {
+  ':pk': { 'S': f"MESSAGE#{username}" }
+  },
+  'ScanIndexForward': False
+  }
+  if unread_only:
+  args['IndexName'] = 'GSI1'
+  resp = client.query(**args)
+We can use the same method for fetching all Messages and fetching
+unread Messages. With our unread_only argument, a caller can
+specify whether they only want unread Messages. If that’s true, we’ll
+add the IndexName property to our Query operation. Otherwise,
+we’ll hit our base table.
+With this sparse index pattern, we’re able to efficiently handle both
+access patterns around Messages.
+
+
+
+20.4. Conclusion
 Entity PK SK
-Customers CUSTOMER#<Username> CUSTOMER#<Username>
-CustomerEmails CUSTOMEREMAIL#<Email> CUSTOMEREMAIL#<Email>
-Addresses N/A N/A
-Orders CUSTOMER#<Username> #ORDER#<OrderId>
-OrderItems ORDER#<OrderId>#ITEM#
-<ItemId>
-ORDER#<OrderId>#ITEM#
-<ItemId>
-Table 22. E-commerce entity chart
-And the final entity chart for the GSI1 index is as follows:
+Deal DEAL#<DealId> DEAL#<DealId>
+Brand BRAND#<Brand> BRAND#<Brand>
+Brands BRANDS BRANDS
+BrandLike BRANDLIKE#<Brand>#<Us
+ername>
+BRANDLIKE#<Brand>#<Us
+ername>
+BrandWatch BRANDWATCH#<Brand> USER#<Username>
+Category CATEGORY#<Category> CATEGORY#<Category>
+CategoryLike CATEGORYLIKE#<Categor
+y>#<Username>
+CATEGORYLIKE#<Categor
+y>#<Username>
+CategoryWatch CATEGORYWATCH#<Catego
+ry>
+USER#<Username>
+FrontPage FRONTPAGE FRONTPAGE
+Editor’s Choice EDITORSCHOICE EDITORSCHOICE
+User USER#<Username> USER#<Username>
+Message MESSAGES#<Username> MESSAGE#<MessageId>
+Table 32. Big Time Deals entity chart
+Then, our GSI1 secondary index:
+365
 Entity GSI1PK GSI1SK
-Customers
-CustomerEmails
-Addresses
-Orders ORDER#<OrderId> ORDER#<OrderId>
-OrderItems ORDER#<OrderId> ITEM#<ItemId>
-Table 23. E-commerce GSI1 entity chart
-Notice a few divergences from our ERD to our entity chart. First,
-we needed to add a special item type, 'CustomerEmails', that are
-used solely for tracking the uniqueness of email addresses provided
-by customers. Second, we don’t have a separate item for Addresses
-as we denormalized it onto the Customer item.
-After you make these entity charts, you should include them in the
-documentation for your repository to assist others in knowing how
-the table is configured. You don’t want to make them dig through
-your data access layer to figure this stuff out.
-Access Patterns
-We have the following six access patterns that we’re solving:
-319
+Deal DEALS#<TruncatedTimestamp> DEAL#<DealId>
+UnreadMessages MESSAGES#<Username> MESSAGE#<MessageId>
+Table 33. Big Time Deals GSI1 entity chart
+Then, our GSI2 secondary index:
+Entity GSI2PK GSI2SK
+Deal BRAND#<Brand>#<TruncatedTi
+mestamp>
+DEAL#<DealId>
+Table 34. Big Time Deals GSI2 entity chart
+And finally, the GSI3 secondary index:
+Entity GSI3PK GSI3SK
+Deal CATEGORY#<Category>#<Trunc
+atedTimestamp>
+DEAL#<DealId>
+
+
+
+
 Access Pattern Index Parameters Notes
-Create Customer N/A N/A
-Use TransactWriteItems to
-create Customer and
-CustomerEmail item with
-conditions to ensure
-uniqueness on each
-Create / Update
-Address N/A N/A
-Use UpdateItem to update
-the Addresses attribute on
-the Customer item
-View Customer &
-Most Recent
-Orders
-Main table • Username
-Use
-ScanIndexForward=False
-to fetch in descending
-order.
-Save Order N/A N/A
-Use TransactWriteItems to
-create Order and
-OrderItems in one request
-Update Order N/A N/A Use UpdateItem to update
-the status of an Order
-View Order &
-Order Items GSI1
-• OrderId
-Table 24. E-commerce access patterns
-Just like your entity charts, this chart with your access pattern
-should be included in the documentation for your repository so
-that it’s easier to understand what’s happening in your application.
-In the next chapter, we’re going to dial it up to 11 by modeling a
-complex application with a large number of entities and
-relationships.
+Create Deal N/A N/A Will happen in
+internal CMS
+Create Brand N/A N/A Add to BRANDS
+container object
+Create Category N/A N/A Fixed number of
+categories (8)
+Set Featured
+Deals for Front
+Page
+N/A N/A
+Will happen in
+internal CMS. Send up
+all featured deals.
+Set Featured
+Deals for
+Category
+N/A N/A
+Will happen in
+internal CMS. Send up
+all featured deals.
+Set Featured
+Deals for Editor’s
+Choice Page
+N/A N/A
+Will happen in
+internal CMS. Send up
+all featured deals.
+366
+Access Pattern Index Parameters Notes
+Fetch Front Page
+& Latest Deals
+Main table N/A Fetch Front Page Item
+GSI1 • LastDealIdSeen
+Query timestamp
+partitions for up to 25
+deals
+Fetch Category &
+Latest Deals
+Main table • CategoryName Fetch Category Item
+GSI3
+• CategoryName
+• LastDealIdSeen
+Query timestamp
+partitions for up to 25
+deals
+Fetch Editor’s
+Choice Page Main table N/A Fetch Editor’s Choice
+item
+Fetch Latest Deals
+for Brand GSI2 *BrandName
+Query timestamp
+partitions for up to 25
+deals
+Fetch all Brands Main table N/A Fetch BRANDS
+container item
+Fetch Deal Main table • Brand GetItem on Deal Id
+Create User Main table N/A
+Condition expression
+to ensure uniqueness
+on username
+Like Brand For
+User Main table N/A
+Transaction to
+increment Brand
+LikeCount and ensure
+User hasn’t liked
+WatchBrand For
+User Main table N/A
+Transaction to
+increment Brand
+WatchCount and
+ensure User hasn’t
+watched
+Like Category For
+User Main table N/A
+Transaction to
+increment Category
+LikeCount and ensure
+User hasn’t liked
+367
+Access Pattern Index Parameters Notes
+WatchCategory
+For User Main table N/A
+Transaction to
+increment Category
+WatchCount and
+ensure User hasn’t
+watched
+View Messages
+for User Main table • Username Query to find all
+Messages
+View Unread
+Messages for User GSI1
+• Username Query to find all
+Messages
+Mark Message as
+Read Main table N/A
+Update Status and
+remove GSI1
+attributes
+Send Hot New
+Deal Message to
+all Users
+User index N/A 1. Scan UserIndex to
+find all Users
+Main table N/A 2. Create Message for
+each User in step 1
+Send new Brand
+Deal Message to
+all Brand
+Watchers
+Main table • BrandName
+1.Query
+BrandWatchers
+partition to find
+watchers for Brand
+Main table N/A 2. Create Message for
+each User in step 1
+Send new
+Category Deal
+Message to all
+Category
+Watchers
+Main table • CategoryName
+1.Query
+CategoryWatchers
+partition to find
+watchers for Category
+Main table N/A 2. Create Message for
+each User in step 1
+
 
