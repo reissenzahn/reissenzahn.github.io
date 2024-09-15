@@ -1,0 +1,32 @@
+{
+  "name": "ext",
+  "displayName": "ext",
+  "description": "Personal extension",
+  "repository": "N/A",
+  "author": "Derek Reissenzahn",
+  "version": "0.0.1",
+  "publisher": "none",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Other"
+  ],
+	"activationEvents": [
+		"onLanguage:markdown"
+	],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": []
+  },
+  "scripts": {
+    "package": "rm -rf *.vsix && npm run build && vsce package && code --install-extension ext-0.0.1.vsix",
+    "build": "tsc -p ./",
+    "test": "echo OK"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.88.0",
+    "@types/node": "18.x",
+    "typescript": "^5.3.3"
+  }
+}

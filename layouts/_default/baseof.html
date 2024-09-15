@@ -17,6 +17,10 @@
 
   {{ $styles := resources.Get "styles.css" | minify }}
   <link href="{{ $styles.RelPermalink }}" rel="stylesheet">
+
+  {{ if .Param "math" }}
+    {{ partialCached "math.html" . }}
+  {{ end }}
 </head>
 <body>
 <header>

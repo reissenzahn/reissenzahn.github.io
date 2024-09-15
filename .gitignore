@@ -1,3 +1,9 @@
 .idea
 .hugo_build.lock
 public/
+*.DS_Store
+**/__pycache__/
+**/.venv
+**/*.vsix
+**/out/
+**/node_modules/
