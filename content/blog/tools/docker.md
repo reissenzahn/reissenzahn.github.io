@@ -4,6 +4,32 @@ date: "2024-08-03"
 tags: ["Programming"]
 ---
 
+## Overview
+
+- Docker promises to easily encapsulate the process of creating a distributable artifact for any application.
+- Docker client: This  is  the  docker  command  used  to  control  most  of  the  Docker  workflow  and
+talk to remote Docker servers.
+- Docker server: This is the dockerd command that is used to start the Docker server process that
+builds and launches containers via a client.
+- Docker or OCI images: Docker  and  OCI  images  consist  of  one  or  more  filesystem  layers  and  some important  metadata  that  represent  all  the  files  required  to  run  a  containerized application. A single image can be copied to numerous hosts. An image typically has a repository address, a name, and a tag. The tag is generally used to identify a  particular  release  of  an  image  (e.g.,  docker.io/superorbital/wordchain:v1.0.1).  A Docker  image  is  any  image  that  is  compatible  with  the  Docker  toolset,  while an  OCI  image  is  specifically  an  image  that  meets  the  Open  Container  Initiative standard and is guaranteed to work with any OCI-compliant tool.
+- Linux container: This  is  a  container  that  has  been  instantiated  from  a  Docker  or  OCI  image.  A specific  container  can  exist  only  once;  however,  you  can  easily  create  multiple containers from the same image. The term Docker container is a misnomer since Docker simply leverages the operating system’s container functionality.
+- Atomic or immutable host: An  atomic  or  immutable  host  is  a  small,  finely  tuned  OS  image,  like  Fedora
+CoreOS, that supports container hosting and atomic OS upgrades.
+
+- There are three components:
+  - Client: Drive all communication with the server.
+  - Server/daemon: Builds, runs and manages containers.
+  - Registry: Stores Docker images and their metadata.
+- Each Docker host will normally have one Docker server running that can manage any number of containers.
+
+- Bridge mode ensures Linux containers behave like a host on a private network. The Docker server acts as a virtual bridge and the container are clients behind it.  A bridge is just a network device that repeats traffic from one side  to another.
+- The actual implementation is that each container has a virtual Ethernet interface connected to the Docker bridge and an IP address allocated to the virtual interface.
+- Docker  lets  you  bind  and  expose  individual  or  groups  of  ports  on  the  host  to  the container  so  that  the  outside  world  can  reach  your  container  on  those  ports.
+- It detects which network blocks are unused on the host and allocates one of those to the  virtual  network.  That  is  bridged  to  the  host’s  local  network  through  an  interface on the server called docker0. This means that, by default, all of the containers are on a network together and can talk to one another directly. But to get to the host or the outside world, they go over the docker0 virtual bridge interface.
+
+- Linux containers are made up of stacked filesystem layers, each identified by a unique hash, where each new set of changes made during the build process is laid on top of the  previous  changes.
+
+
 ## Images
 - An image is the underlying definition of what gets reconstituted into a running container. Every Linux container is based on an image.
 - Each image consists of one or more linked filesystem layers that generally have a one-to-one mapping to each build step used to create the image.
@@ -571,12 +597,118 @@ docker image rm $(docker images -q -f "dangling=true")
 - We must stop all containers that are using an image before removing the image itself.
 
 
-## Debugging
+## Docker Compose
+```bash
+docker compose version
+```
 
+git clone https://github.com/spkane/rocketchat-hubot-demo.git --config core.autocrlf=input
 
+- Docker Compose is typically configured with a declarative YAML file for each project, named docker-compose.yaml.
+- This makes it easy to describe all the important requirements for each of your services and how they communicate with one another.
+- The services section defines how to build, configure and launch each service.
 
-
-
-
+```yaml
+version: '3'
+services:
+  mongodb:
+    build:
+      context: ../mongodb/docker
+    image: spkane/mongo:5.0
+    restart: unless-stopped
+    environment:
+      MONGODB_REPLICA_SET_MODE: primary
+      MONGODB_REPLICA_SET_NAME: rs0
+      MONGODB_PORT_NUMBER: 27017
+      MONGODB_INITIAL_PRIMARY_HOST: mongodb
+      MONGODB_INITIAL_PRIMARY_PORT_NUMBER: 27017
+      MONGODB_ADVERTISED_HOSTNAME: mongodb
+      MONGODB_ENABLE_JOURNAL: "true"
+      ALLOW_EMPTY_PASSWORD: "yes"
+    volumes:
+      - mongodb-rocketchat:/bitnami/mongodb
+    # Port 27017 already exposed by upstream
+    # See the upstream Dockerfile:
+    # https://github.com/bitnami/containers/blob/
+    # f9fb3f8a6323fb768fd488c77d4f111b1330bd0e/bitnami/mongodb/5.0/
+    # debian-11/Dockerfile
+    networks:
+      - botnet
+  rocketchat:
+    # AMD64 only at the moment.
+    # Will use QEMU/Rosetta emulation on ARM64
+    platform: linux/amd64
+    image: rocketchat/rocket.chat:6.5.2
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.rocketchat.rule: Host(`127.0.0.1`)
+      traefik.http.routers.rocketchat.tls: "false"
+      traefik.http.routers.rocketchat.entrypoints: http
+    volumes:
+      - "../rocketchat/data/uploads:/app/uploads"
+    environment:
+      ROOT_URL: http://127.0.0.1:3000
+      PORT: 3000
+      MONGO_URL: "mongodb://mongodb:27017/rocketchat?replicaSet=rs0"
+      MONGO_OPLOG_URL: "mongodb://mongodb:27017/local?replicaSet=rs0"
+      DEPLOY_METHOD: docker
+      DEPLOY_PLATFORM: ""
+      REG_TOKEN: ""
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - 3000:3000
+    networks:
+      - botnet
+  zmachine:
+    image: spkane/zmachine-api:latest
+    restart: unless-stopped
+    volumes:
+      - "../zmachine/saves:/root/saves"
+      - "../zmachine/zcode:/root/zcode"
+    depends_on:
+      - rocketchat
+    expose:
+      - "80"
+    networks:
+      - botnet
+  hubot:
+    # AMD64 only at the moment.
+    # Will use QEMU/Rosetta emulation on ARM64
+    platform: linux/amd64
+    image: rocketchat/hubot-rocketchat:latest
+    restart: unless-stopped
+    volumes:
+      - "../hubot/scripts:/home/hubot/scripts"
+    environment:
+      RESPOND_TO_DM: "true"
+      HUBOT_ALIAS: ". "
+      LISTEN_ON_ALL_PUBLIC: "true"
+      ROCKETCHAT_AUTH: "password"
+      ROCKETCHAT_URL: "rocketchat:3000"
+      ROCKETCHAT_ROOM: ""
+      ROCKETCHAT_USER: "hubot"
+      ROCKETCHAT_PASSWORD: "bot-pw!"
+      BOT_NAME: "bot"
+      EXTERNAL_SCRIPTS: "hubot-help,hubot-diagnostics,hubot-zmachine"
+      HUBOT_ZMACHINE_SERVER: "http://zmachine:80"
+      HUBOT_ZMACHINE_ROOMS: "zmachine"
+      HUBOT_ZMACHINE_OT_PREFIX: "ot"
+    depends_on:
+      - zmachine
+    ports:
+      - 3001:8080
+    networks:
+      - botnet
+networks:
+  # define a single named Docker network called botnet using the bridge driver
+  botnet:
+    driver: bridge
+volumes:
+  mongodb-rocketchat:
+    external: true
+```
 
 

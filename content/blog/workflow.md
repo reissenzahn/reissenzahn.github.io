@@ -15,7 +15,10 @@ tags: ["Career"]
 - Jupyter
 - Template
 - Utility libraries
+
+## Bash scripts
 - Scripts as documentation
+- More powerful stuff with python?
 
 ## Body of work
 - Tracking document
@@ -46,3 +49,16 @@ tags: ["Career"]
 ## Vim
 
 
+## Programming languages
+
+TS 43.4% - more robust than plain JS, nice approach to types
+Rust 11.7% - sigh
+PostgreSQL 51.9%
+MySQL 39.4%
+SQLite 32.1%
+Redis 22.8%
+Elasticsearch 14.3%
+Dynamodb 9.2%
+DuckDB 1.3%
+Kubernetes 22%
+Ansible 8.1%
